@@ -149,7 +149,7 @@ macOS 는 아래 [macOS 설치](#macos-설치) 절(dmg 앱).
 
 ## 릴리스 내기
 
-- **릴리스 등록은 손으로 한다**(Windows exe 를 시험한 뒤). 본문을 Woodada 형식(변경 사항 · 설치 · 전체 변경 내역)으로 쓰려면 `bash build/release-notes.sh vX.Y.Z > notes.md` 로 만들어 `gh release create … --notes-file notes.md` 에 넘긴다.
+- **릴리스 등록은 손으로 한다**(Windows exe 를 시험한 뒤). 본문을 「변경 사항 · 설치 · 전체 변경 내역」 형식으로 쓰려면 `bash build/release-notes.sh vX.Y.Z > notes.md` 로 만들어 `gh release create … --notes-file notes.md` 에 넘긴다.
 - **macOS dmg 는 자동으로 붙는다.** 태그 `vX.Y.Z` 를 push 하면 `build-mac.yml` 이 macOS 러너에서 앱을 묶어 `SessionOrchestrator-mac.dmg`(버전 없는 이름 — 「항상 최신」 링크용, 애플 실리콘 · 인텔 공용)를 만든다.
   - 그 러너에서 dmg 의 앱을 실제로 설치 · 제거하고, `install.sh` 도 macOS 기본 bash 3.2 로 설치 · 제거해 본다. 하나라도 실패하면 붙이지 않는다. 화면 캡처 · 기록은 Actions 결과물 `mac-smoke-test`.
   - 빌드가 끝났을 때 그 태그 릴리스가 이미 있으면 바로 붙인다. 아직 없으면 기다렸다가, 릴리스를 게시하는 순간 `attach` 작업(ubuntu)이 그 빌드의 dmg 를 받아 붙인다. 이 워크플로는 릴리스를 만들지 않는다.
