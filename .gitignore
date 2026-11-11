@@ -1,0 +1,10 @@
+# 상황판 산출물·요청 큐·API 토큰 (세션 제목에 고객사 이름 포함 가능)
+/board/
+
+__pycache__/
+*.pyc
+
+# 배포 압축 파일 (build/mac-package.sh)
+/dist/
+# 앱 아이콘 (build/mac/make_icns.py 가 빌드 때 만든다)
+/build/mac/*.icns

@@ -1,0 +1,235 @@
+name: Build macOS app
+
+# vX.Y.Z 태그를 push 하면 macOS 앱(SessionOrchestrator-mac.dmg, 애플 실리콘 · 인텔 공용)을 빌드해 그 태그의 GitHub 릴리스에 올린다.
+# - macOS 러너에서 python.org 의 universal2 파이썬 + PyInstaller + PyObjC 로 「Session Orchestrator.app」을 묶고(build/mac/so_mac.spec)
+#   임시(ad-hoc) 서명한 뒤, 앱과 응용 프로그램 폴더 바로가기를 담은 .dmg 를 만든다.
+# - 올리기 전에 같은 러너에서 실제로 설치해 본다: dmg 의 앱(설치 · LaunchAgent · 서버 응답 · /board 스킬 명령 · 메뉴 막대 · 제거)과
+#   터미널 설치(install.sh, macOS 기본 bash 3.2). 화면 캡처 · 기록은 Actions 결과물 mac-smoke-test 로 남긴다.
+# - 릴리스는 만들지 않는다(등록은 손으로 — Windows exe 를 시험한 뒤). 빌드가 끝났을 때 그 태그 릴리스가 이미 있으면 바로 dmg 를 붙이고,
+#   없으면 기다렸다가 릴리스가 게시될 때(release: published) attach 작업이 그 태그의 빌드 결과물을 받아 붙인다(build/attach-mac.sh).
+#   붙일 때 본문에 macOS 설치 단락(<!-- macos-install -->)이 없으면 덧붙인다. 두 실행은 같은 concurrency 그룹이라 겹치지 않는다.
+# - Windows 용 파일은 이 워크플로가 다루지 않는다.
+# - 수동 실행(Actions 탭 → Build macOS app → Run workflow)은 빌드 · 설치 시험만 한다.
+# - macOS 러너는 비공개 레포에서 사용 시간이 10배로 잡힌다(한 번에 약 10분 → 100분).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+  actions: read   # attach 작업이 태그 빌드의 결과물(dmg)을 받는다
+
+concurrency:
+  group: build-mac-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PY_VERSION: "3.13.3"            # python.org macOS 설치본(universal2)
+  APP_NAME: "Session Orchestrator"
+  DMG: dist/SessionOrchestrator-mac.dmg
+
+jobs:
+  mac:
+    if: github.event_name != 'release'
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 본문에 이전 태그 뒤 커밋을 적으려고 전체 기록과 태그를 받는다
+
+      - name: Resolve version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "::error::태그는 vX.Y.Z 형식이어야 합니다: $GITHUB_REF_NAME"
+              exit 1
+            fi
+            echo "SO_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+          else
+            echo "SO_VERSION=0.0.0" >> "$GITHUB_ENV"
+          fi
+
+      # universal2 앱을 만들려면 파이썬과 모든 확장 모듈이 universal2 여야 한다. python.org 설치본과 PyObjC 휠이 그렇다
+      - name: Install universal2 Python, PyInstaller, PyObjC
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/python.pkg" "https://www.python.org/ftp/python/$PY_VERSION/python-$PY_VERSION-macos11.pkg"
+          sudo installer -pkg "$RUNNER_TEMP/python.pkg" -target /
+          PY="/Library/Frameworks/Python.framework/Versions/${PY_VERSION%.*}/bin/python3"
+          "$PY" --version
+          lipo -archs "$PY"
+          "$PY" -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --quiet --only-binary=:all: \
+            pyinstaller==6.11.1 pyobjc-core==11.0 pyobjc-framework-Cocoa==11.0
+          echo "VPY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Build app
+        run: |
+          "$VPY" build/mac/make_icns.py build/mac/SessionOrchestrator.icns
+          "$VPY" -m PyInstaller --noconfirm --clean --distpath dist --workpath "$RUNNER_TEMP/pyi" build/mac/so_mac.spec
+          APP="dist/$APP_NAME.app"
+          # Apple 개발자 서명이 없으므로 임시(ad-hoc) 서명만 한다. 애플 실리콘은 서명이 아예 없는 앱을 실행하지 않는다
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/SessionOrchestrator")"
+          echo "archs: $ARCHS"
+          if [[ "$ARCHS" != *x86_64* || "$ARCHS" != *arm64* ]]; then
+            echo "::error::universal2 가 아닙니다: $ARCHS"
+            exit 1
+          fi
+          plutil -p "$APP/Contents/Info.plist"
+          du -sh "$APP"
+
+      # .dmg: 열면 앱과 응용 프로그램 폴더 바로가기가 보여 끌어다 놓으면 설치된다
+      - name: Make dmg
+        run: |
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          ditto "dist/$APP_NAME.app" "$STAGE/$APP_NAME.app"
+          ln -s /Applications "$STAGE/Applications"
+          for i in 1 2 3; do
+            hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" && break
+            echo "hdiutil 재시도 $i"
+            sleep 5
+          done
+          hdiutil verify "$DMG"
+          ls -la dist
+
+      - name: Smoke test — app from dmg (setup, server, skill commands)
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          dump() {   # 실패해도 원인을 볼 수 있게 상주 상태 · 기록을 찍고 결과물로 남긴다
+            echo "── launchctl"; launchctl print "gui/$(id -u)/local.session-orchestrator" 2>&1 | head -40 || true
+            echo "── ps"; ps axww | grep -i "[S]essionOrchestrator" || true
+            pkill -USR1 -f "scripts/board-agent.py" && sleep 2 || true   # 상주 스레드들의 지금 위치를 agent-server.log 로
+            for f in agent.log agent-launchd.log agent-server.log app.log agent-status.json config.json; do
+              echo "── $f"; cat ~/SessionOrchestrator/board/$f 2>/dev/null || echo "(없음)"
+              cp ~/SessionOrchestrator/board/$f "$RUNNER_TEMP/smoke/" 2>/dev/null || true
+            done
+          }
+          trap dump EXIT
+          MP="$(hdiutil attach -nobrowse -noautoopen "$DMG" | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)"
+          ditto "$MP/$APP_NAME.app" "/Applications/$APP_NAME.app"   # 사용자가 끌어다 놓는 것과 같게
+          hdiutil detach "$MP" -quiet || hdiutil detach "$MP" -force -quiet
+          E="/Applications/$APP_NAME.app/Contents/MacOS/SessionOrchestrator"
+          "$E" version
+          "$E" -I -c "import http.server, plistlib, fcntl, AppKit, Foundation; print('bundled modules ok')"
+          "$E" setup --workspace "$GITHUB_WORKSPACE" --no-open
+          cat ~/SessionOrchestrator/board/config.json
+          grep -n "설치 폴더\|감시하는\|| Python" ~/.claude/skills/board/SKILL.md
+          plutil -p ~/Library/LaunchAgents/local.session-orchestrator.plist
+          launchctl print "gui/$(id -u)/local.session-orchestrator" | grep -E "state =|program|pid =" || echo "(launchctl print 실패 — 아래 기록 확인)"
+          curl -s --max-time 3 http://127.0.0.1:18799/api/health
+          echo
+          # /board 스킬이 쓰는 명령을 앱으로(Python 없이)
+          "$E" -I ~/SessionOrchestrator/scripts/board-render.py ~/SessionOrchestrator/board/board-sessions.json "$RUNNER_TEMP/smoke/render-test.html"
+          "$E" -I ~/SessionOrchestrator/scripts/board-queue.py list
+          "$E" status
+          sleep 6
+
+      - name: Check menu bar icon, take screenshots
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          screencapture -x "$RUNNER_TEMP/smoke/1-menubar.png" || echo "screencapture 실패"
+          open "http://127.0.0.1:18799/"
+          sleep 10
+          screencapture -x "$RUNNER_TEMP/smoke/2-board.png" || echo "screencapture 실패"
+          if ! grep -q "메뉴 막대 아이콘 시작" ~/SessionOrchestrator/board/agent.log || grep -q "메뉴 막대 실패" ~/SessionOrchestrator/board/agent.log; then
+            echo "::warning::메뉴 막대 아이콘이 뜨지 않았습니다(agent.log 확인)"
+            exit 1
+          fi
+
+      - name: Smoke test — app uninstall
+        run: |
+          cp ~/SessionOrchestrator/board/*.log ~/SessionOrchestrator/board/agent-status.json "$RUNNER_TEMP/smoke/" 2>/dev/null || true
+          "/Applications/$APP_NAME.app/Contents/MacOS/SessionOrchestrator" uninstall
+          test ! -e ~/Library/LaunchAgents/local.session-orchestrator.plist
+          test ! -e ~/SessionOrchestrator
+          test ! -e ~/.claude/skills/board/SKILL.md
+          sleep 2
+          if curl -s --max-time 2 http://127.0.0.1:18799/api/health; then
+            echo "::error::제거한 뒤에도 서버가 응답합니다"
+            exit 1
+          fi
+
+      - name: Smoke test — terminal install (install.sh, bash 3.2)
+        run: |
+          trap 'for f in ~/SessionOrchestrator/board/*.log; do echo "── $f"; cat "$f"; done 2>/dev/null || true' EXIT
+          /bin/bash --version | head -1
+          /bin/bash install.sh --workspace "$GITHUB_WORKSPACE"
+          curl -s --max-time 3 http://127.0.0.1:18799/api/health
+          echo
+          python3 -I ~/SessionOrchestrator/scripts/board-agent.py --status
+          mkdir -p "$RUNNER_TEMP/smoke/install-sh"
+          cp ~/SessionOrchestrator/board/*.log "$RUNNER_TEMP/smoke/install-sh/" 2>/dev/null || true
+          /bin/bash uninstall.sh
+          test ! -e ~/SessionOrchestrator
+          test ! -e ~/Library/LaunchAgents/local.session-orchestrator.plist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SessionOrchestrator-mac-dmg
+          path: ${{ env.DMG }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-smoke-test
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: warn
+
+      - name: Attach to release if it exists
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            bash build/attach-mac.sh "$TAG" "$DMG"
+          else
+            msg="릴리스 $TAG 가 아직 없어 dmg 를 붙이지 않았습니다. 릴리스를 게시하면 attach 작업이 이 빌드의 dmg 를 붙입니다."
+            echo "$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # 릴리스를 손으로 게시하면: 그 태그 push 로 돈 macOS 빌드를 찾아(끝날 때까지 기다림) dmg 를 받아 붙인다. ubuntu 라 사용 시간이 적다
+  attach:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Wait for the macOS build of this tag, attach its dmg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          RUN=""
+          for i in $(seq 1 20); do   # 태그 push 직후에 게시했으면 빌드 실행이 아직 안 잡혔을 수 있다
+            RUN="$(gh run list --workflow build-mac.yml --event push --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            [ -n "$RUN" ] && break
+            sleep 15
+          done
+          if [ -z "$RUN" ]; then
+            echo "::error::$TAG 의 macOS 빌드 실행을 못 찾았습니다(그 태그 커밋에 build-mac.yml 이 있어야 합니다)"
+            exit 1
+          fi
+          echo "macOS 빌드 실행: $RUN"
+          if ! gh run watch "$RUN" --exit-status --interval 30 > /dev/null; then
+            echo "::error::macOS 빌드가 실패해 붙이지 않습니다: https://github.com/$GH_REPO/actions/runs/$RUN"
+            exit 1
+          fi
+          gh run download "$RUN" -n SessionOrchestrator-mac-dmg -D dist
+          bash build/attach-mac.sh "$TAG" dist/SessionOrchestrator-mac.dmg
