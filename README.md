@@ -54,7 +54,7 @@ macOS 는 아래 [macOS 설치](#macos-설치) 절(dmg 앱).
 - **v1.2.0 이하에서 넘어올 때:** 위 업데이트와 같다. v1.3.0 exe 를 처음 실행하면 예전 단일 exe(`%USERPROFILE%\SessionOrchestrator\SessionOrchestrator.exe`)와 업데이트 찌꺼기를 지운다. v1.2.0 의 자동 업데이트는 v1.3.0 을 받지 못하므로(받을 exe 가 없음) 한 번은 손으로 받아야 한다.
 - **알림:** 「Session Orchestrator」 이름과 로고로 뜬다. 트레이 메뉴 「알림 시험 보내기」로 확인. 안 보이면 Windows 설정 → 시스템 → 알림에서 Session Orchestrator 를 켠다.
 - **제거:** 명령 프롬프트에서 `"<푼 폴더>\SessionOrchestrator.exe" uninstall` (판정 데이터를 남기려면 끝에 ` --keep-data`). 트레이 · 자동 실행 · 스킬 · 데이터 폴더를 지운다. 끝난 뒤 압축을 푼 프로그램 폴더를 직접 지운다.
-- **Python 으로 깔고 싶으면(예전 방식):** Release 의 `SessionOrchestrator-<버전>-python.zip` 을 풀고 `install.cmd`. Python 3.9 이상이 필요하고, 제거는 `uninstall.cmd`.
+- **Python 으로 깔고 싶으면(예전 방식):** Release 의 「Source code (zip)」(GitHub 가 릴리스마다 자동으로 붙이는 소스 압축)을 풀고 `install.cmd`. Python 3.9 이상이 필요하고, 제거는 `uninstall.cmd`.
 - **감시 폴더 바꾸기:** `%USERPROFILE%\SessionOrchestrator\board\config.json` 의 `workspace` 를 고치고 트레이를 다시 띄운다(압축 파일 설치는 `install.cmd -Workspace "C:\다른\폴더"`).
 - **「이 페이지에 연결할 수 없음」이 뜨면:** 트레이가 상황판 서버를 못 띄운 것이다. 트레이 아이콘에 마우스를 올리거나 오른쪽 클릭 메뉴의 「서버:」 줄에 이유가 보이고, 그 상태에서 아이콘을 누르면 빈 창 대신 이유를 알림으로 띄운다(알림을 누르면 로그). 포트 18799 를 못 쓰는 PC(Hyper-V · WSL · Docker 가 Windows 에 포트 범위를 예약해 둔 경우 등)면 트레이가 28799 등 다른 포트로 옮겨 `board\config.json` 의 `port` 에 적는다. 로그 `board\tray.log`. 설치 끝에도 서버가 응답하는지 확인하고, 안 되면 로그 끝부분을 보여 준다.
 - **토큰:** 실시간 화면(상태 · 토큰 · 연결)은 토큰을 쓰지 않는다. 판정 · 요약 · 채팅 전달은 관제 세션이 하므로 그 세션의 사용량으로 잡힌다.
