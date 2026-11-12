@@ -19,39 +19,42 @@ Claude Code(데스크톱 앱) 세션 전체를 한 화면에서 보는 **로컬 
 - **세션 타임라인:** 세션마다 활동 막대, 세션 간 메시지는 그 시각의 세로선(6시간 / 24시간 / 7일)
 - **활동 히트맵:** 최근 7일 요일×시간 출력 토큰
 - **열 지표:** 물림 수 · 오늘 토큰, 내 답 대기가 3개를 넘으면 빨강, 영업일 1일 넘게 답을 기다린 카드엔 🔥
-- **카드 상세(JIRA 이슈 보기 식):** 속성 · 내가 할 일 · 요약 · 백그라운드 작업(도는 것·한 시간 안에 끝난 것) · 마지막 결과 · 실시간 · 연결 · 채팅, 숨기기 · 보관 · 삭제. 왼쪽 가장자리를 끌어 너비 조절, 바깥을 누르면 닫힘
+- **카드 상세(JIRA 이슈 보기 식):** 속성 · 내가 할 일 · 요약 · 백그라운드 작업(도는 것·한 시간 안에 끝난 것) · 마지막 결과 · 실시간 · 연결 · 채팅 · 대화, 숨기기 · 보관 · 삭제. 왼쪽 가장자리를 끌어 너비 조절, 바깥을 누르면 닫힘
 - **숨기기 · 보관 · 삭제:** 모든 열의 카드와 상세 창에 있다. 지금 도는 세션이면 확인창에서 "작업이 멈출 수 있음"을 한 번 더 알린다
 - **⚙ 모양(네 축, 어떤 축도 다른 축 값을 바꾸지 않음):** 레이아웃 5종(칸반 · 갤러리 · 노트 · 목록 · 레일) × 스킨 10종(플랫 · Primary · Brutalist · Material · Glass · Neumorph · Sketch · Terminal · Neon · Editorial — 질감만, 모든 레이아웃에 똑같이 입혀짐) × 색 16종 × 라이트/다크, 그리고 셋을 한 번에 정하는 프리셋 12개(AnuPpuccin · Royal Velvet · Shimmering Focus 같은 옵시디언 커뮤니티 테마 포함). 강조색 위 글자색은 대비로 자동 선택. 기본값은 칸반 + Primary
 - **트레이 상주:** 로고(레인 막대 4개) 아이콘. 도는 세션이 있으면 막대가 오르내리고, 내 답 대기(질문 포함)는 빨간 숫자 배지. 질문 · 턴 끝남 · 멈춤 · 30분째 미처리 요청 · 새 답 대기를 윈도우 알림으로. 왼쪽 클릭 = 상황판 창
 - **로고:** 같은 모양을 트레이 · 파비콘(Edge 앱 창 아이콘) · 제목 옆 · 바로가기 아이콘(`scripts/board-logo.ico`)에 쓴다
-- 세션 이름은 `claude://` 링크라 일반 브라우저에서 누르면 Claude 앱의 그 세션이 열린다
+- **대화(v1.3.0):** 상세 창에서 그 세션의 대화 전문을 읽을 수 있다(읽기 전용, 표 · 굵게 · 코드 그대로). 처음엔 최근 부분만 읽고 「이전 대화 더 보기」로 앞부분, 열어 둔 동안 새 대화가 이어 붙는다
+- 세션 이름 · 「↗」는 `claude://` 링크다. 상황판 창(Edge 앱 창)은 이 링크를 앱에 못 넘기므로 상황판 서버가 대신 Claude 앱의 그 세션을 연다
 
 ## 설치(팀원용, Windows)
 
 macOS 는 아래 [macOS 설치](#macos-설치) 절(dmg 앱).
 
-**필요한 것:** Windows 10/11 · Claude 데스크톱 앱(Code 탭) · Edge. Python 은 필요 없다(exe 안에 들어 있음).
+**필요한 것:** Windows 10/11 · Claude 데스크톱 앱(Code 탭) · Edge. Python 은 필요 없다(zip 안에 들어 있음).
 
-1. [Releases](../../releases) 에서 `SessionOrchestrator.exe` 를 받아 실행한다(아무 폴더에 두고 두 번 클릭).
-   - **처음 실행은 1~2분 동안 아무 반응이 없을 수 있다.** 보안 프로그램(백신)이 처음 보는 파일을 검사하는 시간이다. 여러 번 누르지 말고 기다린다. 두 번째부터는 빠르다.
+1. [Releases](../../releases/latest) 에서 `SessionOrchestrator-<버전>-win.zip` 을 받아 원하는 곳에 푼다(예: 바탕화면의 도구 폴더). `SessionOrchestrator` 폴더가 생긴다.
+2. 그 폴더의 `SessionOrchestrator.exe` 를 두 번 클릭한다. **압축을 푼 그 자리에서 돈다** — 다른 곳으로 복사하지 않는다.
+   - **처음 실행은 1~2분 동안 아무 반응이 없을 수 있다.** 보안 프로그램(백신)이 처음 보는 파일을 검사하는 시간이다. 여러 번 누르지 말고 기다린다.
    - "Windows의 PC 보호" 창이 뜨면 「추가 정보 → 실행」. 서명 없는 exe 라서 뜬다.
-2. 처음이면 감시할 작업 폴더(Claude Code 세션을 여는 폴더)를 고르는 창이 뜬다. 고르면 「설치했습니다」 창이 뜬다.
-   - exe 는 `%USERPROFILE%\SessionOrchestrator\SessionOrchestrator.exe` 로 자기 자신을 복사해 거기서 돈다. 받은 파일은 지워도 된다.
-3. 시계 옆 트레이에 막대 4개 아이콘이 생긴다. 누르면 상황판이 열리고, 그 폴더의 세션이 바로 실시간으로 보인다.
-4. Claude 앱에서 그 작업 폴더로 새 세션을 열어 「관제 (상황판)」 처럼 이름을 바꾸고 사이드바에 고정한 뒤 `/board` 를 보낸다. 이때부터 내 답 대기 · 완료 · 정리 후보 판정과 카드 채팅 · 보관 · 삭제가 켜진다.
+   - 같은 폴더의 `_internal` 폴더는 프로그램의 일부다. 지우거나 exe 만 따로 옮기지 않는다.
+3. 처음이면 감시할 작업 폴더(Claude Code 세션을 여는 폴더)를 고르는 창이 뜬다. 고르면 「준비했습니다」 창이 뜬다.
+4. 시계 옆 트레이에 막대 4개 아이콘이 생긴다. 누르면 상황판이 열리고, 그 폴더의 세션이 바로 실시간으로 보인다. exe 를 다시 두 번 클릭해도 상황판이 열린다.
+5. Claude 앱에서 그 작업 폴더로 새 세션을 열어 「관제 (상황판)」 처럼 이름을 바꾸고 사이드바에 고정한 뒤 `/board` 를 보낸다. 이때부터 내 답 대기 · 완료 · 정리 후보 판정과 카드 채팅 · 보관 · 삭제가 켜진다.
 
 | 무엇 | 어디 |
 |---|---|
-| 프로그램 | `%USERPROFILE%\SessionOrchestrator\SessionOrchestrator.exe` |
+| 프로그램 | 압축을 푼 `SessionOrchestrator` 폴더(`SessionOrchestrator.exe` + `_internal`) |
 | 판정 데이터 · 로그 · 설정(`config.json` 의 `workspace`) | `%USERPROFILE%\SessionOrchestrator\board` |
-| `/board` 스킬(사용자 단위) | `%USERPROFILE%\.claude\skills\board\SKILL.md` (명령은 exe 로 돈다) |
-| 로그인 자동 실행 | 레지스트리 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `SessionOrchestrator` |
+| `/board` 스킬(사용자 단위) | `%USERPROFILE%\.claude\skills\board\SKILL.md` (명령은 그 exe 로 돈다) |
+| 로그인 자동 실행 | 레지스트리 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `SessionOrchestrator`(트레이 메뉴로 켜고 끔) |
 
-- **자동 업데이트:** 트레이가 켜질 때와 6시간마다 [최신 릴리스](../../releases/latest)를 확인해, 새 버전이면 `SessionOrchestrator.exe` 를 받아(크기 · SHA-256 확인) 스스로 바꿔 끼운다. 바꾸는 1~2분 동안 상황판이 잠깐 꺼지고, 시작 · 끝을 알림으로 알린다. 트레이 메뉴 「자동 업데이트」로 끄고, 「지금 업데이트 확인」으로 바로 확인한다.
-- **손으로 업데이트:** 새 `SessionOrchestrator.exe` 를 받아 실행하면 떠 있는 트레이를 끄고 바꿔 끼운 뒤 다시 띄운다(작업 폴더 · 판정 데이터는 그대로). 압축 파일(install.cmd)로 깐 PC 도 같은 방법으로 exe 로 바뀐다.
+- **업데이트:** 트레이가 켜질 때와 6시간마다 [최신 릴리스](../../releases/latest)를 확인해, 새 버전이면 알림만 띄운다(누르면 릴리스 페이지). 새 zip 을 받아 풀고 그 안의 `SessionOrchestrator.exe` 를 한 번 실행하면, 떠 있는 옛 트레이를 닫고 설정 · 스킬 · 자동 실행을 새 exe 에 맞춘 뒤 다시 띄운다(작업 폴더 · 판정 데이터는 그대로). 그다음 옛 폴더는 지워도 된다. 트레이 메뉴 「새 버전 알림」으로 끄고, 「새 버전 확인」으로 바로 확인한다.
+- **프로그램 폴더를 옮기면:** 옮긴 곳의 `SessionOrchestrator.exe` 를 한 번 실행한다(스킬 · 자동 실행이 새 경로로 바뀐다).
+- **v1.2.0 이하에서 넘어올 때:** 위 업데이트와 같다. v1.3.0 exe 를 처음 실행하면 예전 단일 exe(`%USERPROFILE%\SessionOrchestrator\SessionOrchestrator.exe`)와 업데이트 찌꺼기를 지운다. v1.2.0 의 자동 업데이트는 v1.3.0 을 받지 못하므로(받을 exe 가 없음) 한 번은 손으로 받아야 한다.
 - **알림:** 「Session Orchestrator」 이름과 로고로 뜬다. 트레이 메뉴 「알림 시험 보내기」로 확인. 안 보이면 Windows 설정 → 시스템 → 알림에서 Session Orchestrator 를 켠다.
-- **제거:** Win+R 에 `%USERPROFILE%\SessionOrchestrator\SessionOrchestrator.exe uninstall` (판정 데이터를 남기려면 끝에 ` --keep-data`). 실행 중인 exe 자신은 지울 수 없어 남으니, 끝난 뒤 그 폴더를 직접 지운다.
-- **Python 으로 깔고 싶으면(예전 방식):** Release 의 `SessionOrchestrator-<버전>.zip` 을 풀고 `install.cmd`. Python 3.9 이상이 필요하고, 제거는 `uninstall.cmd`.
+- **제거:** 명령 프롬프트에서 `"<푼 폴더>\SessionOrchestrator.exe" uninstall` (판정 데이터를 남기려면 끝에 ` --keep-data`). 트레이 · 자동 실행 · 스킬 · 데이터 폴더를 지운다. 끝난 뒤 압축을 푼 프로그램 폴더를 직접 지운다.
+- **Python 으로 깔고 싶으면(예전 방식):** Release 의 `SessionOrchestrator-<버전>-python.zip` 을 풀고 `install.cmd`. Python 3.9 이상이 필요하고, 제거는 `uninstall.cmd`.
 - **감시 폴더 바꾸기:** `%USERPROFILE%\SessionOrchestrator\board\config.json` 의 `workspace` 를 고치고 트레이를 다시 띄운다(압축 파일 설치는 `install.cmd -Workspace "C:\다른\폴더"`).
 - **「이 페이지에 연결할 수 없음」이 뜨면:** 트레이가 상황판 서버를 못 띄운 것이다. 트레이 아이콘에 마우스를 올리거나 오른쪽 클릭 메뉴의 「서버:」 줄에 이유가 보이고, 그 상태에서 아이콘을 누르면 빈 창 대신 이유를 알림으로 띄운다(알림을 누르면 로그). 포트 18799 를 못 쓰는 PC(Hyper-V · WSL · Docker 가 Windows 에 포트 범위를 예약해 둔 경우 등)면 트레이가 28799 등 다른 포트로 옮겨 `board\config.json` 의 `port` 에 적는다. 로그 `board\tray.log`. 설치 끝에도 서버가 응답하는지 확인하고, 안 되면 로그 끝부분을 보여 준다.
 - **토큰:** 실시간 화면(상태 · 토큰 · 연결)은 토큰을 쓰지 않는다. 판정 · 요약 · 채팅 전달은 관제 세션이 하므로 그 세션의 사용량으로 잡힌다.
@@ -114,8 +117,8 @@ macOS 는 아래 [macOS 설치](#macos-설치) 절(dmg 앱).
 
 | 파일 | 역할 |
 |---|---|
-| `scripts/so_app.py` | exe 시작점. 설치 폴더 밖에서 실행 = 설치 · 업데이트, 설치 폴더에서 = 트레이, `render`·`map`·`queue`·`server`·`uninstall` 하위 명령 |
-| `.github/workflows/build-win.yml` | 버전 태그를 push 하면 GitHub Actions 가 PyInstaller 로 exe 를 빌드(tkinter 제외) |
+| `scripts/so_app.py` | exe 시작점. 그냥 실행 = 설정을 이 exe 에 맞추고 트레이(떠 있으면 상황판 열기), `render`·`map`·`queue`·`server`·`uninstall` 하위 명령. 자기 복사 · 받은 파일 실행은 하지 않는다 |
+| `.github/workflows/build-win.yml` | 버전 태그를 push 하면 GitHub Actions 가 PyInstaller 폴더형(onedir)으로 빌드해 `SessionOrchestrator-<버전>-win.zip` 으로(tkinter 제외) |
 | `install.ps1` · `install.cmd` · `uninstall.cmd` | Python 으로 까는 예전 방식의 설치 · 업데이트 · 제거 |
 | `scripts/so_mac.py` | macOS 앱 시작점(PyInstaller 로 `Session Orchestrator.app` 으로 묶음). 설치 · 업데이트 · 제거, 파이썬 대역(`-I 스크립트.py`) |
 | `install.sh` · `uninstall.sh` | macOS 터미널 설치(대안, Python 필요) |
@@ -149,7 +152,7 @@ macOS 는 아래 [macOS 설치](#macos-설치) 절(dmg 앱).
 
 ## 릴리스 내기
 
-- **릴리스 등록은 손으로 한다**(Windows exe 를 시험한 뒤). 본문을 「변경 사항 · 설치 · 전체 변경 내역」 형식으로 쓰려면 `bash build/release-notes.sh vX.Y.Z > notes.md` 로 만들어 `gh release create … --notes-file notes.md` 에 넘긴다.
+- **릴리스 등록은 손으로 한다**(Windows zip 을 받아 풀어 시험한 뒤). 본문을 「변경 사항 · 설치 · 전체 변경 내역」 형식으로 쓰려면 `bash build/release-notes.sh vX.Y.Z > notes.md` 로 만들어 `gh release create … --notes-file notes.md` 에 넘긴다.
 - **macOS dmg 는 자동으로 붙는다.** 태그 `vX.Y.Z` 를 push 하면 `build-mac.yml` 이 macOS 러너에서 앱을 묶어 `SessionOrchestrator-mac.dmg`(버전 없는 이름 — 「항상 최신」 링크용, 애플 실리콘 · 인텔 공용)를 만든다.
   - 그 러너에서 dmg 의 앱을 실제로 설치 · 제거하고, `install.sh` 도 macOS 기본 bash 3.2 로 설치 · 제거해 본다. 하나라도 실패하면 붙이지 않는다. 화면 캡처 · 기록은 Actions 결과물 `mac-smoke-test`.
   - 빌드가 끝났을 때 그 태그 릴리스가 이미 있으면 바로 붙인다. 아직 없으면 기다렸다가, 릴리스를 게시하는 순간 `attach` 작업(ubuntu)이 그 빌드의 dmg 를 받아 붙인다. 이 워크플로는 릴리스를 만들지 않는다.
