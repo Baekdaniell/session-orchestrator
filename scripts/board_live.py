@@ -94,6 +94,103 @@ def _first_line(text, n=140):
     return ""
 
 
+# ── 대화 전문(상세 창의 「대화」) ──
+# 대화 파일에서 사람이 읽을 줄만 뽑는다: 작업자 말 · Claude 글 · 도구 호출(한 줄 요약) · 도구 결과(짧게) · 알림(접어 둠).
+# 생각(thinking) · 첨부 · API 기록 같은 줄은 뺀다. 파일이 수십 MB 라 끝에서부터 창(window) 크기만큼만 읽고, 앞은 「더 보기」로.
+NOTICE_PREFIXES = ("[SYSTEM NOTIFICATION", "<task-notification", "<side-sessions-event", "<system-reminder", "<command-",
+                   "<local-command", "Caveat:", "<user-prompt-submit-hook")
+TEXT_LIMIT, TOOL_LIMIT, RESULT_LIMIT = 12000, 300, 600
+
+
+def _tool_summary(name, inp):
+    if not isinstance(inp, dict):
+        return str(inp)[:TOOL_LIMIT]
+    for key in ("command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "message", "session_id"):
+        v = inp.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()[:TOOL_LIMIT]
+    return json.dumps(inp, ensure_ascii=False)[:TOOL_LIMIT]
+
+
+def _content_text(c):
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return "\n".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+    return ""
+
+
+def transcript_items(lines):
+    """대화 파일 줄들 → [{r: user|assistant|other, k: text|tool|result|notice|relay, t, ts, n?(도구 이름), err?}]."""
+    out = []
+    for raw in lines:
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        typ, ts = d.get("type"), d.get("timestamp", "")
+        if typ == "user":
+            m = d.get("message") or {}
+            c = m.get("content")
+            if d.get("isMeta"):
+                text = _content_text(c)
+                if "Another Claude session sent a message" in text or "cross-session-message" in text:
+                    out.append({"r": "other", "k": "relay", "t": text[:TEXT_LIMIT], "ts": ts})
+                continue
+            if isinstance(c, str):
+                c = [{"type": "text", "text": c}]
+            for x in c if isinstance(c, list) else []:
+                if not isinstance(x, dict):
+                    continue
+                if x.get("type") == "text" and x.get("text", "").strip():
+                    t = x["text"]
+                    kind = "notice" if t.lstrip().startswith(NOTICE_PREFIXES) else "text"
+                    out.append({"r": "user", "k": kind, "t": t[:TEXT_LIMIT], "ts": ts})
+                elif x.get("type") == "tool_result":
+                    out.append({"r": "user", "k": "result", "t": _content_text(x.get("content"))[:RESULT_LIMIT], "ts": ts,
+                                "err": bool(x.get("is_error"))})
+                elif x.get("type") == "image":
+                    out.append({"r": "user", "k": "text", "t": "[이미지]", "ts": ts})
+        elif typ == "assistant":
+            for x in (d.get("message") or {}).get("content") or []:
+                if not isinstance(x, dict):
+                    continue
+                if x.get("type") == "text" and x.get("text", "").strip():
+                    out.append({"r": "assistant", "k": "text", "t": x["text"][:TEXT_LIMIT], "ts": ts})
+                elif x.get("type") == "tool_use":
+                    out.append({"r": "assistant", "k": "tool", "n": str(x.get("name", "")), "t": _tool_summary(x.get("name"), x.get("input")), "ts": ts})
+        elif typ == "attachment":  # 일하는 도중 작업자가 친 말은 queued_command 첨부로 남는다
+            a = d.get("attachment") or {}
+            if a.get("type") == "queued_command" and str(a.get("prompt", "")).strip():
+                t = str(a["prompt"])
+                out.append({"r": "user", "k": "notice" if t.lstrip().startswith(NOTICE_PREFIXES) else "text", "t": t[:TEXT_LIMIT], "ts": ts})
+    return out
+
+
+def transcript(path, before=None, after=None, window=1_500_000):
+    """대화 파일 한 조각. after 가 있으면 그 바이트 뒤로 새로 붙은 것만(실시간), 아니면 before(없으면 끝)에서 window 만큼 앞.
+    줄 경계에 맞춰 자르고, 다음 요청에 쓸 start · end 바이트를 돌려준다."""
+    path = Path(path)
+    size = path.stat().st_size
+    with open(path, "rb") as f:
+        if after is not None:
+            start, end = min(max(0, after), size), size
+            f.seek(start)
+            raw = f.read(end - start)
+            cut = raw.rfind(b"\n") + 1  # 아직 다 안 쓰인 마지막 줄은 다음 번에
+            raw, end = raw[:cut], start + cut
+        else:
+            end = size if before is None else min(max(0, before), size)
+            start = max(0, end - window)
+            f.seek(start)
+            raw = f.read(end - start)
+            if start > 0:  # 잘린 첫 줄은 버린다
+                nl = raw.find(b"\n")
+                raw, start = (raw[nl + 1:], start + nl + 1) if nl >= 0 else (b"", end)
+    lines = raw.decode("utf-8", "replace").splitlines()
+    return {"items": transcript_items(lines), "start": start, "end": end, "more": start > 0, "size": size}
+
+
 class FileState:
     """jsonl 파일 하나의 누적 상태."""
 

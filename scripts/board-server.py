@@ -303,10 +303,12 @@ class Handler(SimpleHTTPRequestHandler):
                         return self._json(200, {"state": d["state"], "result": d.get("result", ""), "finished_at": d.get("finished_at", "")})
                     return self._json(200, {"state": "queued" if state == "inbox" else "working"})
             return self._json(404, {"state": "unknown"})
-        if u.path in ("/api/live", "/api/stream", "/api/timeline", "/api/heatmap"):
+        if u.path in ("/api/live", "/api/stream", "/api/timeline", "/api/heatmap", "/api/transcript"):
             qs = parse_qs(u.query)
             if not (self._auth(qs.get("t", [""])[0]) or self._auth()):  # 쿼리 t 또는 X-Board-Token 헤더
                 return self._json(403, {"error": "token"})
+            if u.path == "/api/transcript":
+                return self._transcript(qs)
             if u.path == "/api/timeline":
                 try:
                     hours = max(1, min(24 * 7, int(qs.get("hours", ["6"])[0])))
@@ -326,6 +328,40 @@ class Handler(SimpleHTTPRequestHandler):
     def _live_reply(self):
         return self._json(200, self._live())
 
+    def transcript_path(self, sid=None, cli=None):
+        """사이드바 세션 id(또는 대화 id) → 그 세션의 대화 파일(가장 최근에 쓰인 것). 앱 기록 · 판정 짝 · 대화 폴더 순으로 찾는다."""
+        if cli:
+            clis = {cli} if CLI.match(cli) else set()
+        else:
+            clis = set((self.app_records().get(sid) or {}).get("cli") or [])
+            clis |= {c for c, s in self.mapping().items() if s == sid}
+        ws = board_live.watched_workspace(self.root)
+        found = [d / f"{c}.jsonl" for d in board_live.project_dirs(ws) for c in clis]
+        found = [p for p in found if p.exists()]
+        return max(found, key=lambda p: p.stat().st_mtime) if found else None
+
+    def _transcript(self, qs):
+        """GET /api/transcript?sid=…[&before=바이트|&after=바이트] → 상세 창의 「대화」(읽기 전용)."""
+        sid, cli = qs.get("sid", [""])[0], qs.get("cli", [""])[0]
+        if not SID.match(sid) and not CLI.match(cli):
+            return self._json(400, {"error": "bad sid"})
+        path = self.transcript_path(sid=sid) if SID.match(sid) else self.transcript_path(cli=cli)
+        if not path:
+            return self._json(404, {"error": "대화 파일을 못 찾음"})
+
+        def num(k):
+            try:
+                v = qs.get(k, [""])[0]
+                return int(v) if v != "" else None
+            except ValueError:
+                return None
+        try:
+            out = board_live.transcript(path, before=num("before"), after=num("after"))
+        except OSError as e:
+            return self._json(500, {"error": str(e)})
+        out["file"] = path.stem
+        return self._json(200, out)
+
     def do_POST(self):
         u = urlparse(self.path)
         if not u.path.startswith("/api/"):
@@ -339,6 +375,22 @@ class Handler(SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "bad json"})
+        if u.path == "/api/open":
+            # Claude 앱에서 그 세션 열기. Edge 앱 창(--app)은 claude:// 링크를 앱에 넘기지 못해 「↗」를 눌러도 반응이 없었다
+            # (11-11 실측: 같은 링크를 Windows 로 열면 앱이 그 세션으로 바뀜). 그래서 서버(트레이 프로세스)가 대신 연다
+            sid = str(body.get("session_id", ""))
+            if not SID.match(sid):
+                return self._json(400, {"error": "bad session_id"})
+            url = "claude://claude.ai/epitaxy/" + sid
+            try:
+                if os.name == "nt":
+                    os.startfile(url)
+                else:
+                    import subprocess
+                    subprocess.Popen(["open", url])
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True})
         if u.path == "/api/summarize":
             sid = str(body.get("session_id", ""))
             if not SID.match(sid):

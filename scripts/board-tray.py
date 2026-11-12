@@ -23,7 +23,6 @@
 """
 import ctypes
 import ctypes.wintypes as W
-import hashlib
 import importlib.util
 import json
 import re
@@ -205,11 +204,25 @@ def autostart_on() -> bool:
     return startup_lnk().exists()
 
 
+def autostart_target() -> str:
+    return f'"{sys.executable}" tray'
+
+
+def autostart_value() -> str:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            return str(winreg.QueryValueEx(k, RUN_NAME)[0])
+    except OSError:
+        return ""
+
+
 def set_autostart(on: bool):
     if FROZEN:
+        if on and autostart_value() == autostart_target():
+            return
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
             if on:
-                winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, f'"{sys.executable}" tray')
+                winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, autostart_target())
             else:
                 try:
                     winreg.DeleteValue(k, RUN_NAME)
@@ -345,14 +358,15 @@ DT_CENTER, DT_VCENTER, DT_SINGLELINE, DT_NOPREFIX = 0x1, 0x4, 0x20, 0x800
 CB_MSG = WM_APP + 1
 WM_TEST_TOAST = WM_APP + 0x30   # `SessionOrchestrator.exe notify-test` 가 보낸다(알림 모양 확인용)
 WM_UPDATE_CHECK = WM_APP + 0x31  # `SessionOrchestrator.exe update-check` 가 보낸다
+WM_OPEN_BOARD = WM_APP + 0x32    # `SessionOrchestrator.exe`(또는 `open`)를 다시 실행하면 보낸다 — 상황판 열기
 ID_OPEN, ID_NOTIFY, ID_AUTOSTART, ID_TEST, ID_AUTOUPD, ID_UPDCHK, ID_QUIT = 1, 2, 3, 4, 5, 6, 9
 
 # 알림에 보일 앱 이름 · 로고. Store 판 Python 으로 돌던 트레이는 그 패키지(Python)의 이름 · 로고로 알림이 갔다(Windows 알림 기록으로 확인)
 AUMID = "SessionOrchestrator.Tray"
-# 자동 업데이트(exe 만): 공개 레포의 최신 릴리스를 켤 때와 6시간마다 확인
+# 새 버전 알림(exe 만): 공개 레포의 최신 릴리스를 켤 때와 6시간마다 확인(받거나 실행하지 않고 알리기만)
 REPO = "Baekdaniell/session-orchestrator"
 UPDATE_EVERY = 6 * 3600
-VERSION = os.environ.get("SO_VERSION", "")  # exe 시작점(so_app)이 넘겨준다. Python 으로 돌면 빈 값 → 자동 업데이트 안 함
+VERSION = os.environ.get("SO_VERSION", "")  # exe 시작점(so_app)이 넘겨준다. Python 으로 돌면 빈 값 → 새 버전 알림 안 함
 
 
 CORAL, GRAY, BADGE, WHITE = (255, 94, 91), (138, 138, 146), (214, 54, 64), (255, 255, 255)
@@ -582,7 +596,8 @@ class Tray:
         self.toast_sid = None
         self.last_open = 0.0
         self.first = True
-        self._updating = False  # 자동 업데이트가 겹쳐 돌지 않게
+        self._updating = False  # 새 버전 확인이 겹쳐 돌지 않게
+        self.release_url = f"https://github.com/{REPO}/releases/latest"
         self.status = "시작 중"
         self.armed = False
         self.size = GetSystemMetrics(49) or 16  # SM_CXSMICON
@@ -746,7 +761,7 @@ class Tray:
         self.show_toast("🎼 알림 시험", "이렇게 떠요. 안 보이면 Windows 설정 → 시스템 → 알림에서 Session Orchestrator 알림을 켜 주세요.", None)
 
     def announce_update(self):
-        """방금 자동 업데이트로 바뀌었으면(설치기가 board/updated.txt 에 남김) 한 번 알린다."""
+        """새 버전 exe 로 바꿔 띄웠으면(so_app 이 board/updated.txt 에 남김) 한 번 알린다."""
         f = ROOT / "updated.txt"
         try:
             v = f.read_text(encoding="utf-8").strip()
@@ -754,9 +769,9 @@ class Tray:
         except OSError:
             return
         if v:
-            self.show_toast(f"✅ v{v} 로 업데이트했어요", "상황판이 다시 떴어요. 바뀐 점은 GitHub 릴리스에서 볼 수 있어요.", None)
+            self.show_toast(f"✅ v{v} 로 바뀌었어요", "상황판이 새 버전으로 다시 떴어요. 바뀐 점은 GitHub 릴리스에서 볼 수 있어요.", None)
 
-    # ── 자동 업데이트(exe 만) ──
+    # ── 새 버전 알림(exe 만) ──
     def update_loop(self):
         time.sleep(90)  # 로그인 직후에 몰리지 않게
         while True:
@@ -765,15 +780,15 @@ class Tray:
             time.sleep(UPDATE_EVERY)
 
     def check_update(self, manual: bool):
-        """공개 레포의 최신 릴리스가 지금보다 새 버전이면 exe 를 받아 크기 · SHA-256 을 맞춰 본 뒤 실행해 바꿔 끼운다.
-        받은 exe 는 설치 폴더 밖 경로라 「설치 · 업데이트」로 돌고, 이 트레이를 닫고 새 트레이를 띄운다."""
+        """공개 레포의 최신 릴리스가 지금보다 새 버전이면 알림만 띄운다(누르면 릴리스 페이지).
+        exe 가 스스로 새 파일을 받아 실행하지 않는다 — 작업자가 새 zip 을 받아 풀고 그 안의 exe 를 실행하면 바뀐다.
+        같은 버전은 한 번만 알린다(손으로 확인하면 다시)."""
         if not VERSION or self._updating:
             return
         self._updating = True
         try:
-            ua = {"User-Agent": f"SessionOrchestrator/{VERSION}"}
             req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/latest",
-                                         headers=dict(ua, Accept="application/vnd.github+json"))
+                                         headers={"User-Agent": f"SessionOrchestrator/{VERSION}", "Accept": "application/vnd.github+json"})
             with urllib.request.urlopen(req, timeout=20) as r:  # 시스템 프록시를 따른다
                 rel = json.loads(r.read().decode("utf-8"))
             tag = str(rel.get("tag_name") or "")
@@ -782,40 +797,19 @@ class Tray:
                 if manual:
                     self.show_toast("✅ 최신 버전이에요", f"지금 v{VERSION} 이 가장 새 버전이에요.", None)
                 return
-            asset = next((a for a in rel.get("assets") or [] if a.get("name") == "SessionOrchestrator.exe"), None)
-            if not asset:
-                log("update: 릴리스에 exe 가 없음", tag)
-                return
-            d = WS / "update"
-            d.mkdir(exist_ok=True)
-            part, exe = d / f"SessionOrchestrator-{tag}.exe.part", d / f"SessionOrchestrator-{tag}.exe"
-            h, n = hashlib.sha256(), 0
-            with urllib.request.urlopen(urllib.request.Request(asset["browser_download_url"], headers=ua), timeout=120) as r, open(part, "wb") as f:
-                while True:
-                    b = r.read(1 << 16)
-                    if not b:
-                        break
-                    f.write(b)
-                    h.update(b)
-                    n += len(b)
-            want = str(asset.get("digest") or "")
-            if n != int(asset.get("size") or -1) or (want.startswith("sha256:") and want[7:].lower() != h.hexdigest()):
-                part.unlink(missing_ok=True)
-                log("update: 받은 파일이 릴리스와 다름", n, asset.get("size"), want[:24])
-                if manual:
-                    self.show_toast("⚠ 업데이트를 멈췄어요", "받은 파일이 릴리스와 달라요. 누르면 로그가 열려요.", "__log__")
-                return
-            make_writable(exe)
-            if exe.exists():
-                exe.unlink()
-            part.rename(exe)
-            log("update: 설치 시작", VERSION, "→", tag)
-            self.show_toast(f"🔄 {tag} 로 업데이트해요", "1~2분 뒤 트레이가 다시 떠요. 그동안 상황판이 잠깐 꺼져요.", None)
-            subprocess.Popen([str(exe), "--update"], cwd=str(WS), close_fds=True, creationflags=DETACHED_PROCESS | 0x00000200)
+            url = str(rel.get("html_url") or "")
+            self.release_url = url if url.startswith(f"https://github.com/{REPO}/") else f"https://github.com/{REPO}/releases/latest"
+            log("update: 새 버전", tag, "(지금", VERSION + ")")
+            if manual or self.settings.get("notified_version") != tag:
+                self.settings["notified_version"] = tag
+                save_settings(self.settings)
+                self.show_toast(f"🆕 새 버전 {tag} 가 나왔어요",
+                                "누르면 릴리스 페이지가 열려요. zip 을 받아 풀고 그 안의 SessionOrchestrator.exe 를 실행하면 바뀌어요.",
+                                "__release__")
         except Exception as e:
             log("update:", repr(e))
             if manual:
-                self.show_toast("⚠ 업데이트 확인 실패", f"{e}"[:200], "__log__")
+                self.show_toast("⚠ 새 버전 확인 실패", f"{e}"[:200], "__log__")
         finally:
             self._updating = False
 
@@ -964,8 +958,8 @@ class Tray:
         AppendMenuW(m, MF_STRING, ID_TEST, "알림 시험 보내기")
         AppendMenuW(m, MF_STRING | (MF_CHECKED if autostart_on() else 0), ID_AUTOSTART, "로그인 시 자동 실행")
         if VERSION:  # exe 로 돌 때만
-            AppendMenuW(m, MF_STRING | (MF_CHECKED if self.settings.get("autoupdate", True) else 0), ID_AUTOUPD, "자동 업데이트(6시간마다 확인)")
-            AppendMenuW(m, MF_STRING, ID_UPDCHK, f"지금 업데이트 확인 (지금 v{VERSION})")
+            AppendMenuW(m, MF_STRING | (MF_CHECKED if self.settings.get("autoupdate", True) else 0), ID_AUTOUPD, "새 버전 알림(6시간마다 확인)")
+            AppendMenuW(m, MF_STRING, ID_UPDCHK, f"새 버전 확인 (지금 v{VERSION})")
         AppendMenuW(m, MF_SEPARATOR, 0, None)
         srv = (f"서버: 이 트레이가 띄움 (포트 {PORT})" if self.own_server else
                (f"서버: 다른 곳에서 띄움 (포트 {PORT})" if self.ok else "서버: 꺼짐 — " + self.status[:80]))
@@ -1026,6 +1020,11 @@ class Tray:
                             os.startfile(str(LOG))
                         except OSError as e:
                             log("open log:", e)
+                    elif self.toast_sid == "__release__":
+                        try:
+                            os.startfile(self.release_url)
+                        except OSError as e:
+                            log("open release:", e)
                     else:
                         self.open_board(self.toast_sid)
                 return 0
@@ -1041,7 +1040,7 @@ class Tray:
                 self.icon_key = None
                 self.paint_icon()
                 return 0
-            if msg == 0x0010:  # WM_CLOSE: exe 설치 · 업데이트가 보낸다. 아이콘을 지우고 서버까지 끄고 끝낸다
+            if msg == 0x0010:  # WM_CLOSE: 다른 exe(새 버전 · 옮긴 폴더)를 실행하면 보낸다. 아이콘을 지우고 서버까지 끄고 끝낸다
                 self.quit()
                 return 0
             if msg == WM_TEST_TOAST:
@@ -1049,6 +1048,9 @@ class Tray:
                 return 0
             if msg == WM_UPDATE_CHECK:
                 threading.Thread(target=self.check_update, args=(True,), daemon=True, name="update-check").start()
+                return 0
+            if msg == WM_OPEN_BOARD:
+                self.open_board()
                 return 0
             if msg == WM_DESTROY:
                 PostQuitMessage(0)
@@ -1068,17 +1070,20 @@ class Tray:
         self.hwnd = CreateWindowExW(0, wc.lpszClassName, TITLE, 0, 0, 0, 0, 0, None, None, hinst, None)
         self.hicon = make_icon(self.size, 0, True, "")
         self.add_icon()
-        if "autostart" not in self.settings:  # 처음 한 번은 자동 실행을 켠다(작업자가 고른 트레이 방식의 전제)
+        if self.settings.get("autostart", True):
+            # 처음 한 번은 자동 실행을 켠다(작업자가 고른 트레이 방식의 전제). 켜져 있으면 값이 이 exe 를 가리키게 맞춘다
+            # (새 버전 zip 을 다른 폴더에 풀었거나 폴더를 옮겼으면 옛 경로를 가리키고 있다)
             try:
                 set_autostart(True)
-                self.settings["autostart"] = True
-                save_settings(self.settings)
+                if "autostart" not in self.settings:
+                    self.settings["autostart"] = True
+                    save_settings(self.settings)
             except Exception as e:
                 log("autostart:", e)
         self.tick()
         SetTimer(self.hwnd, 1, POLL_MS, None)
         self.announce_update()
-        if VERSION:  # exe 로 돌 때만 자동 업데이트
+        if VERSION:  # exe 로 돌 때만 새 버전 알림
             threading.Thread(target=self.update_loop, daemon=True, name="update").start()
         msg = W.MSG()
         while GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:

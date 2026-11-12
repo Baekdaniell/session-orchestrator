@@ -1,6 +1,8 @@
-# Windows 실행 파일(SessionOrchestrator.exe) 빌드. 버전 태그(vX.Y.Z)를 push 하거나 손으로 돌리면
-# PyInstaller 로 exe 하나를 만들어 작업 결과물(artifact)로 올린다. 릴리스 등록은 받아서 시험한 뒤 손으로 한다.
-# tkinter 는 넣지 않는다 — 넣으면 실행마다 파일 900여 개를 더 풀어 보안 프로그램(백신) 검사로 한 번에 40초가 걸렸다.
+# Windows 빌드. 버전 태그(vX.Y.Z)를 push 하거나 손으로 돌리면 PyInstaller 폴더형(onedir)으로 만들어
+# SessionOrchestrator-<버전>-win.zip(안에 SessionOrchestrator\ 폴더)을 작업 결과물(artifact)로 올린다. 릴리스 등록은 받아서 시험한 뒤 손으로 한다.
+# 단일 exe(--onefile)로 만들지 않는다 — 실행마다 임시 폴더에 풀어 돌고, v1.2.0 까지는 스스로 설치 폴더로 복사 · 새 exe 를 받아 실행까지 해서
+# 보안 프로그램(백신)이 악성 설치기로 보고 지웠다. 폴더형은 압축을 푼 자리에서 그대로 돈다.
+# tkinter 는 넣지 않는다 — 넣으면 파일 900여 개가 더 들어가 보안 프로그램 검사로 한 번에 40초가 걸렸다.
 name: build-win
 
 on:
@@ -43,9 +45,9 @@ jobs:
           )
           "@ | Set-Content -Encoding utf8 version_info.txt
           Get-Content version_info.txt
-      - name: exe 빌드
+      - name: 폴더형 빌드
         run: >
-          pyinstaller --noconfirm --onefile --windowed
+          pyinstaller --noconfirm --onedir --windowed --contents-directory _internal
           --name SessionOrchestrator
           --exclude-module tkinter --exclude-module _tkinter
           --icon scripts/board-logo.ico
@@ -56,16 +58,25 @@ jobs:
       - name: 버전 출력 확인
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath dist\SessionOrchestrator.exe -ArgumentList '--version' -Wait -PassThru -NoNewWindow -RedirectStandardOutput ver.txt
+          $exe = 'dist\SessionOrchestrator\SessionOrchestrator.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--version' -Wait -PassThru -NoNewWindow -RedirectStandardOutput ver.txt
           Get-Content ver.txt
           "exit $($p.ExitCode)"
-          $i = Get-Item dist\SessionOrchestrator.exe
+          $i = Get-Item $exe
           "$($i.Name) $($i.Length) · 파일 설명: $($i.VersionInfo.FileDescription) $($i.VersionInfo.FileVersion)"
-          $t = Measure-Command { Start-Process -FilePath dist\SessionOrchestrator.exe -ArgumentList 'queue','list' -Wait -NoNewWindow -RedirectStandardOutput q.txt }
+          $t = Measure-Command { Start-Process -FilePath $exe -ArgumentList 'queue','list' -Wait -NoNewWindow -RedirectStandardOutput q.txt }
           "queue list: $([math]::Round($t.TotalSeconds,1))s"
           Get-Content q.txt
+          $files = Get-ChildItem dist\SessionOrchestrator -Recurse -File
+          "폴더: 파일 $($files.Count)개 · $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB, 1))MB"
+      - name: zip
+        shell: pwsh
+        run: |
+          $code = (Select-String -Path scripts/so_app.py -Pattern '^VERSION = "([0-9.]+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path dist\SessionOrchestrator -DestinationPath "SessionOrchestrator-$code-win.zip"
+          Get-Item "SessionOrchestrator-$code-win.zip" | Select-Object Name, Length
       - uses: actions/upload-artifact@v4
         with:
-          name: SessionOrchestrator-exe
-          path: dist/SessionOrchestrator.exe
+          name: SessionOrchestrator-win
+          path: SessionOrchestrator-*-win.zip
           retention-days: 7

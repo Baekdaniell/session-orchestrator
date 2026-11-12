@@ -1,15 +1,17 @@
-"""so_app.py — Session Orchestrator 실행 파일(exe) 시작점 (PyInstaller 로 SessionOrchestrator.exe 하나로 묶는다).
+"""so_app.py — Session Orchestrator 실행 파일(exe) 시작점. PyInstaller 폴더형(onedir)으로 묶어 zip 으로 배포한다.
 
-  SessionOrchestrator.exe            설치 폴더 밖(받은 폴더 등)에서 실행 = 설치 · 업데이트
-                                     설치 폴더(%USERPROFILE%\\SessionOrchestrator)에서 실행 = 트레이 시작(떠 있으면 상황판 열기)
+  SessionOrchestrator.exe            처음 = 작업 폴더를 고르고 설정 · 상황판 페이지 · /board 스킬을 만든 뒤 트레이 시작
+                                     다음부터 = 트레이 시작(이 exe 의 트레이가 이미 떠 있으면 상황판 열기)
+                                     다른 exe(옛 버전 · 옮기기 전 폴더)의 트레이가 떠 있으면 닫고 이 exe 로 바꿔 띄운다
   SessionOrchestrator.exe tray       트레이(로그인 자동 실행이 이걸 부른다)
   SessionOrchestrator.exe render|map|queue|server …   /board 스킬이 쓰는 도구(Python 없이)
   SessionOrchestrator.exe uninstall [--keep-data]     제거(판정 데이터를 남기려면 --keep-data)
-  SessionOrchestrator.exe notify-test | update-check   떠 있는 트레이에 시험 알림 · 업데이트 확인을 시킨다
-  SessionOrchestrator.exe --update   (트레이의 자동 업데이트가 부른다) 창 없이 설치 · 업데이트
+  SessionOrchestrator.exe notify-test | update-check | open   떠 있는 트레이에 시험 알림 · 새 버전 확인 · 상황판 열기를 시킨다
 
-Python 을 따로 깔 필요가 없다. 판정 데이터 · 설정 · 로그는 %USERPROFILE%\\SessionOrchestrator\\board 에 두고,
-코드는 exe 안(scripts/)에 들어 있다. 기존 install.cmd 설치와 같은 폴더를 쓰므로 판정 데이터를 그대로 이어받는다.
+압축을 푼 그 자리에서 돈다. exe 가 자기 자신을 다른 곳으로 복사하거나, 인터넷에서 받은 파일을 실행하지 않는다
+(v1.2.0 까지의 「단일 exe 가 스스로 설치 폴더로 복사 + 새 exe 를 받아 실행」은 보안 프로그램(백신)이 악성 설치기로
+보고 지웠다). 새 버전 = 새 zip 을 풀어 그 안의 exe 를 한 번 실행. 폴더를 옮겼을 때도 옮긴 곳의 exe 를 한 번 실행한다.
+판정 데이터 · 설정 · 로그는 그대로 %USERPROFILE%\\SessionOrchestrator\\board 에 두어 옛 버전의 데이터를 이어받는다.
 """
 # PyInstaller 가 함께 넣도록, exe 안의 스크립트들이 쓰는 표준 모듈을 여기서 미리 불러 둔다
 import argparse  # noqa: F401
@@ -47,10 +49,12 @@ from pathlib import Path
 
 APP = "SessionOrchestrator"
 TITLE = "Session Orchestrator"
-VERSION = "1.2.0"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
-HOME = Path(os.environ.get("USERPROFILE") or Path.home()) / APP
-EXE = HOME / (APP + ".exe")
-BUNDLE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))  # exe 안에 풀린 코드 위치
+VERSION = "1.3.0"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
+HOME = Path(os.environ.get("USERPROFILE") or Path.home()) / APP  # 데이터 폴더(board/)
+FROZEN = bool(getattr(sys, "frozen", False))
+EXE = Path(sys.executable).resolve() if FROZEN else HOME / (APP + ".exe")  # 지금 도는 exe(압축 푼 자리)
+LEGACY_EXE = HOME / (APP + ".exe")  # v1.2.0 까지 단일 exe 가 스스로 복사해 두던 자리
+BUNDLE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))  # exe 옆 _internal(코드 위치)
 SCRIPTS = BUNDLE / "scripts"
 TOOLS = {"tray": "board-tray.py", "render": "board-render.py", "map": "board-map.py",
          "queue": "board-queue.py", "server": "board-server.py"}
@@ -92,6 +96,32 @@ def run_tool(name: str, args: list) -> int:
 
 def tray_window():
     return ctypes.windll.user32.FindWindowW("SessionOrchestratorTray", None)
+
+
+def tray_exe(h) -> Path | None:
+    """떠 있는 트레이 창을 가진 프로세스의 실행 파일(옛 Python 트레이면 pythonw.exe)."""
+    k32 = ctypes.windll.kernel32
+    pid = ctypes.wintypes.DWORD()
+    ctypes.windll.user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+    k32.OpenProcess.restype = ctypes.c_void_p
+    hp = k32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not hp:
+        return None
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.wintypes.DWORD(1024)
+        if k32.QueryFullProcessImageNameW(ctypes.c_void_p(hp), 0, buf, ctypes.byref(n)):
+            return Path(buf.value)
+    finally:
+        k32.CloseHandle(ctypes.c_void_p(hp))
+    return None
+
+
+def same_file(a: Path | None, b: Path) -> bool:
+    try:
+        return a is not None and os.path.normcase(str(a.resolve())) == os.path.normcase(str(b.resolve()))
+    except OSError:
+        return False
 
 
 def stop_tray() -> None:
@@ -165,7 +195,7 @@ def render_skill(workspace: str) -> str:
         ('| Python | `"{{PY}}"` |', '| 실행 파일 | `"{{EXE}}"` (Python 필요 없음) |'),
         ('아래에서 `PY` = `"{{PY}}"`', '아래에서 `EXE` = `"{{EXE}}"`'),
         ('`explorer.exe "H/board/Session Orchestrator.lnk"`(경로는 백슬래시로) 또는 `PY -I H/scripts/board-tray.py --install`',
-         '`explorer.exe "' + str(EXE) + '"`(설치 폴더의 exe 를 다시 실행하면 트레이가 뜬다)'),
+         '`explorer.exe "' + str(EXE) + '"`(이 exe 를 다시 실행하면 트레이가 뜬다)'),
         ("PY -I H/scripts/board-map.py", "EXE map"),
         ("PY -I H/scripts/board-render.py", "EXE render"),
         ("PY -I H/scripts/board-queue.py", "EXE queue"),
@@ -187,88 +217,84 @@ def remove_old_startup_lnk() -> None:
         pass
 
 
-def install(quiet: bool = False) -> int:
-    """받은 exe 를 설치 폴더로 복사하고 설정 · 상황판 페이지 · /board 스킬을 만든 뒤 트레이를 띄운다(업데이트도 같은 길).
-    quiet = 트레이의 자동 업데이트가 부른 경우. 창을 띄우지 않고(작업 폴더가 없으면 그냥 멈춤), 새 트레이가 알림으로 알린다."""
-    def say(text: str, warn: bool = False) -> None:
-        if not quiet:
-            msgbox(text, warn)
-    board = HOME / "board"
-    board.mkdir(parents=True, exist_ok=True)
-    stop_tray()
-    me = Path(sys.executable).resolve()
-    # 지난 업데이트 때 비켜 둔 exe 와 내려받은 옛 설치 파일(이제 안 쓰이면 지워진다)
-    for old in list(HOME.glob(APP + ".exe.old-*")) + [p for p in (HOME / "update").glob("*") if p.resolve() != me]:
-        try:
-            old.unlink()
-        except OSError:
-            pass
-    make_writable(EXE)
-    for i in range(10):
-        try:
-            shutil.copy2(me, EXE)
-            break
-        except OSError as e:
-            # 관제 세션의 「queue wait」 같은 다른 exe 가 아직 돌면 파일이 잠겨 덮어쓸 수 없다.
-            # 실행 중인 exe 도 이름은 바꿀 수 있으므로 옆으로 비켜 두고 새로 놓는다(그 프로세스는 옛 코드로 마저 돈다)
-            if i == 3 and EXE.exists():
-                try:
-                    EXE.rename(EXE.with_name(EXE.name + ".old-" + time.strftime("%Y%m%d-%H%M%S")))
-                except OSError:
-                    pass
-            if i == 9:
-                say(f"설치 폴더에 복사하지 못했습니다.\n{EXE}\n{e}", warn=True)
-                if quiet:  # 자동 업데이트가 실패해도 옛 트레이는 다시 띄운다
-                    subprocess.Popen([str(EXE), "tray"], cwd=str(HOME), creationflags=DETACHED, close_fds=True)
-                return 1
-            time.sleep(0.5)
-    cfg = read_config()
-    ws = cfg.get("workspace") or ""
-    if not ws or not Path(ws).is_dir():
-        if quiet:
-            return 1
-        ws = ask_folder()
-        if not ws:
-            msgbox("작업 폴더를 고르지 않아 설치를 멈췄습니다. 다시 실행하면 이어서 합니다.", warn=True)
-            return 1
-    cfg["workspace"] = ws
-    write_text(board / "config.json", json.dumps(cfg, ensure_ascii=False, indent=1))
-    rows = board / "board-sessions.json"
-    if not rows.exists():
-        rows.write_text("[]", encoding="utf-8")
-    tmp = board / "session-board.new.html"
-    if run_tool("render", [str(rows), str(tmp)]) == 0 and tmp.exists():
-        make_writable(board / "session-board.html")
-        os.replace(tmp, board / "session-board.html")
-    skill_dir = Path.home() / ".claude" / "skills" / "board"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    write_text(skill_dir / "SKILL.md", render_skill(ws))
-    remove_old_startup_lnk()
-    # 로그인 자동 실행은 레지스트리 Run(트레이와 같은 값). 옛 설정에 autostart 가 이미 있으면 트레이가 다시 켜지 않으므로 여기서 건다
+def write_if_changed(p: Path, text: str) -> None:
     try:
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as k:
-            winreg.SetValueEx(k, APP, 0, winreg.REG_SZ, f'"{EXE}" tray')
+        if p.read_text(encoding="utf-8") == text:
+            return
     except OSError:
         pass
-    if quiet:  # 새 트레이가 뜨면서 「업데이트했어요」 알림을 띄우게 남겨 둔다
+    write_text(p, text)
+
+
+def remove_legacy() -> None:
+    """v1.2.0 까지의 흔적: 설치 폴더로 복사된 단일 exe · 업데이트 때 비켜 둔 exe · 자동 업데이트가 받아 둔 exe."""
+    olds = list(HOME.glob(APP + ".exe.old-*")) + list((HOME / "update").glob("*"))
+    if not same_file(LEGACY_EXE, EXE):  # zip 을 데이터 폴더 자리에 풀었으면 그 exe 가 지금 도는 것 — 남긴다
+        olds.append(LEGACY_EXE)
+    for old in olds:
+        try:
+            if old.exists():
+                make_writable(old)
+                old.unlink()
+        except OSError:
+            pass
+    try:
+        (HOME / "update").rmdir()
+    except OSError:
+        pass
+
+
+def setup() -> int:
+    """설정 · 상황판 페이지 · /board 스킬을 이 exe 기준으로 맞추고 트레이를 띄운다. 처음 실행 · 새 버전 · 폴더 옮김 모두 같은 길.
+    파일을 복사하지 않는다 — 압축을 푼 그 자리의 exe 가 돈다. 로그인 자동 실행 값은 트레이가 자기 exe 로 맞춘다."""
+    board = HOME / "board"
+    board.mkdir(parents=True, exist_ok=True)
+    stop_tray()  # 다른 exe(옛 버전 · 옮기기 전 폴더 · Python 트레이)의 트레이
+    remove_legacy()
+    cfg = read_config()
+    first = not cfg.get("workspace")
+    ws = cfg.get("workspace") or ""
+    if not ws or not Path(ws).is_dir():
+        ws = ask_folder()
+        if not ws:
+            msgbox("작업 폴더를 고르지 않아 멈췄습니다. 다시 실행하면 이어서 합니다.", warn=True)
+            return 1
+    changed = not first and cfg.get("version") != VERSION  # 옛 버전(v1.2.0 은 version 값이 없음)에서 바뀜
+    cfg["workspace"], cfg["version"] = ws, VERSION
+    try:
+        write_if_changed(board / "config.json", json.dumps(cfg, ensure_ascii=False, indent=1))
+        rows = board / "board-sessions.json"
+        if not rows.exists():
+            rows.write_text("[]", encoding="utf-8")
+        tmp = board / "session-board.new.html"
+        if run_tool("render", [str(rows), str(tmp)]) == 0 and tmp.exists():
+            make_writable(board / "session-board.html")
+            os.replace(tmp, board / "session-board.html")
+        skill_dir = Path.home() / ".claude" / "skills" / "board"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        write_if_changed(skill_dir / "SKILL.md", render_skill(ws))
+    except OSError as e:
+        msgbox(f"설정 파일을 쓰지 못했습니다.\n{e}", warn=True)
+        return 1
+    remove_old_startup_lnk()
+    if changed:  # 새 트레이가 뜨면서 「새 버전으로 바뀌었어요」 알림을 띄우게 남겨 둔다
         try:
             (board / "updated.txt").write_text(VERSION, encoding="utf-8")
         except OSError:
             pass
     subprocess.Popen([str(EXE), "tray"], cwd=str(HOME), creationflags=DETACHED, close_fds=True)
-    if quiet:
-        return 0
-    msgbox("설치했습니다.\n\n"
-           f"설치 폴더: {HOME}\n감시 작업 폴더: {ws}\n\n"
-           "1) 시계 옆 트레이의 막대 아이콘을 누르면 상황판이 열립니다.\n"
-           "2) Claude 앱에서 위 작업 폴더로 세션을 열어 사이드바에 고정하고 /board 를 보내면 판정 · 카드 채팅이 켜집니다.\n\n"
-           "새 버전은 새 exe 를 받아 실행하면 그대로 업데이트됩니다.")
+    if first:
+        msgbox("준비했습니다.\n\n"
+               f"프로그램 폴더: {EXE.parent}\n데이터 폴더: {HOME}\n감시 작업 폴더: {ws}\n\n"
+               "1) 시계 옆 트레이의 막대 아이콘을 누르면 상황판이 열립니다.\n"
+               "2) Claude 앱에서 위 작업 폴더로 세션을 열어 사이드바에 고정하고 /board 를 보내면 판정 · 카드 채팅이 켜집니다.\n\n"
+               "프로그램 폴더를 옮기면 옮긴 곳의 exe 를 한 번 실행해 주세요. 새 버전은 새 zip 을 풀어 그 안의 exe 를 실행하면 바뀝니다.")
     return 0
 
 
 def uninstall(keep_data: bool) -> int:
-    """트레이 종료 · 로그인 자동 실행 · /board 스킬 · 설치 폴더를 지운다. 판정 데이터(board)는 keep_data 면 남긴다.
-    지금 실행 중인 exe 자신은 지울 수 없어 남기고, 그 경우 폴더를 직접 지우라고 알린다(스스로 지우는 동작은 넣지 않는다)."""
+    """트레이 종료 · 로그인 자동 실행 · /board 스킬 · 데이터 폴더를 지운다. 판정 데이터(board)는 keep_data 면 남긴다.
+    압축을 푼 프로그램 폴더(지금 도는 exe 가 든 곳)는 스스로 지우지 않고, 직접 지우라고 알린다."""
     stop_tray()
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as k:
@@ -282,29 +308,30 @@ def uninstall(keep_data: bool) -> int:
             shutil.rmtree(skill.parent, ignore_errors=True)
     except OSError:
         pass
-    me = Path(sys.executable).resolve()
+    mine = {os.path.normcase(str(EXE)), os.path.normcase(str(EXE.parent / "_internal"))}  # 지금 도는 프로그램(데이터 폴더에 풀었을 때)
     left = []
     if HOME.exists():
         for p in HOME.iterdir():
-            if (keep_data and p.name == "board") or p.resolve() == me:
+            if (keep_data and p.name == "board") or os.path.normcase(str(p.resolve())) in mine:
                 continue
             make_writable(p)
             try:
                 shutil.rmtree(p) if p.is_dir() else p.unlink()
             except OSError:
                 left.append(p.name)
-    note = ""
-    if me.parent == HOME.resolve():
-        note = f"\n\n지금 실행 중인 {me.name} 는 지울 수 없어 남겼습니다. 이 창을 닫은 뒤 {HOME} 폴더를 직접 지워 주세요."
-    elif not left and not keep_data:
-        try:
-            HOME.rmdir()
-        except OSError:
-            pass
-    msgbox("Session Orchestrator 를 제거했습니다(트레이 · 로그인 자동 실행 · /board 스킬 · 설치 파일)."
+        if not left and not keep_data:
+            try:
+                HOME.rmdir()
+            except OSError:
+                pass
+    msgbox("Session Orchestrator 를 제거했습니다(트레이 · 로그인 자동 실행 · /board 스킬 · 데이터)."
            + ("\n판정 데이터(board)는 남겼습니다." if keep_data else "")
-           + (f"\n지우지 못한 항목: {', '.join(left)}" if left else "") + note)
+           + (f"\n지우지 못한 항목: {', '.join(left)}" if left else "")
+           + f"\n\n이 창을 닫은 뒤 프로그램 폴더를 직접 지워 주세요:\n{EXE.parent}")
     return 0
+
+
+TRAY_ORDERS = {"notify-test": 0x30, "update-check": 0x31, "open": 0x32}  # 트레이의 WM_APP + 값
 
 
 def main() -> int:
@@ -317,21 +344,19 @@ def main() -> int:
         return 0
     if args and args[0] == "uninstall":
         return uninstall(keep_data="--keep-data" in args)
-    if args and args[0] in ("notify-test", "update-check"):  # 떠 있는 트레이에 시키기(알림 모양 · 업데이트 확인)
+    if args and args[0] in TRAY_ORDERS:  # 떠 있는 트레이에 시키기(알림 모양 · 새 버전 확인 · 상황판 열기)
         h = tray_window()
         if not h:
             print("트레이가 떠 있지 않습니다")
             return 1
-        ctypes.windll.user32.PostMessageW(h, 0x8000 + (0x30 if args[0] == "notify-test" else 0x31), 0, 0)
+        ctypes.windll.user32.PostMessageW(h, 0x8000 + TRAY_ORDERS[args[0]], 0, 0)
         print("트레이에 보냈습니다:", args[0])
         return 0
-    if args and args[0] == "--update":
-        return install(quiet=True)
-    if Path(sys.executable).resolve() == EXE.resolve() and read_config().get("workspace"):
-        if tray_window():  # 이미 떠 있으면 아무것도 안 함(트레이 아이콘으로 연다)
-            return 0
-        return run_tool("tray", [])
-    return install()
+    h = tray_window()
+    if h and same_file(tray_exe(h), EXE) and read_config().get("workspace"):
+        ctypes.windll.user32.PostMessageW(h, 0x8000 + TRAY_ORDERS["open"], 0, 0)  # 이미 떠 있으면 상황판만 연다
+        return 0
+    return setup()
 
 
 if __name__ == "__main__":

@@ -136,6 +136,35 @@ button, input, select { font: inherit; color: inherit; }
 /* 판정 뒤에 세션이 더 움직였다는 띠(11-11) */
 .drawer .stale { margin: 8px 0 2px; padding: 9px 12px; border-radius: 8px; border-left: 3px solid var(--c-yellow); background: color-mix(in srgb, var(--c-yellow) 12%, var(--panel)); font-size: .9em; }
 .drawer .box .was { margin-top: 6px; color: var(--fg-3); font-size: .88em; }
+/* 대화 전문(읽기 전용): 작업자 말은 오른쪽 말풍선, Claude 글은 본문, 도구 호출은 한 줄. 결과 · 알림은 체크하면 보임 */
+.drawer .conv-h { display: flex; align-items: center; gap: 10px; }
+.drawer .conv-tools { margin-left: auto; display: inline-flex; gap: 10px; font-weight: 400; letter-spacing: 0; }
+.drawer .conv-tools label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.drawer .conv { max-height: 62vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: .92em; }
+.drawer .conv .msg { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.drawer .conv .msg.user { align-self: flex-end; max-width: 88%; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
+.drawer .conv .msg.tool { font: .82em/1.45 ui-monospace, Consolas, monospace; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer .conv .msg.tool b { color: var(--fg-2); font-weight: 600; }
+.drawer .conv .msg.result { display: none; font: .78em/1.4 ui-monospace, Consolas, monospace; color: var(--fg-3); border-left: 2px solid var(--line); padding-left: 8px; max-height: 9em; overflow: auto; }
+.drawer .conv .msg.result.err { border-left-color: var(--danger); }
+.drawer .conv .msg.notice, .drawer .conv .msg.relay { display: none; font-size: .8em; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer .conv .msg.relay { display: block; }
+.drawer .conv.show-res .msg.result { display: block; }
+.drawer .conv.show-note .msg.notice { display: block; }
+.drawer .conv .more { align-self: center; padding: 3px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg-2); font-size: .85em; cursor: pointer; }
+.drawer .conv .day { align-self: center; font-size: .75em; color: var(--fg-3); }
+.drawer .conv .msg.assistant { white-space: normal; }
+.drawer .conv .md-p, .drawer .conv .md-li, .drawer .conv .md-quote { white-space: pre-wrap; }
+.drawer .conv .md-gap { height: .45em; }
+.drawer .conv .md-h { font-weight: 700; margin: 6px 0 2px; }
+.drawer .conv .md-li { position: relative; }
+.drawer .conv .md-li::before { content: attr(data-mark); position: absolute; margin-left: -12px; color: var(--fg-3); }
+.drawer .conv .md-quote { border-left: 3px solid var(--line); padding-left: 8px; color: var(--fg-2); }
+.drawer .conv .md-code { margin: 4px 0; padding: 8px 10px; border-radius: 6px; background: var(--callout); font: .85em/1.45 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }
+.drawer .conv code { padding: 0 4px; border-radius: 4px; background: var(--callout); font: .9em ui-monospace, Consolas, monospace; }
+.drawer .conv .md-table { border-collapse: collapse; margin: 4px 0; font-size: .92em; }
+.drawer .conv .md-table th, .drawer .conv .md-table td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; }
+.drawer .conv .md-table th { background: var(--callout); }
 .drawer .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .drawer .acts a, .drawer .acts button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--fg); font-size: .88em; font-weight: 600; text-decoration: none; cursor: pointer; }
 .drawer .acts a:hover, .drawer .acts button:hover { background: var(--hover); }
@@ -915,6 +944,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <div class="box hidden" id="d-bg"></div>
     <h3>마지막 결과</h3>
     <div class="box" id="d-result"></div>
+    <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label></span></h3>
+    <div class="conv" id="d-conv"><span class="nosum">불러오는 중…</span></div>
     <h3>실시간</h3>
     <div class="box" id="d-live"><span class="nosum">아직 실시간 정보가 없어요</span></div>
     <h3>연결 (최근 48시간)</h3>
@@ -1637,6 +1668,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     return data;
   };
+  // 세션 링크(claude://…/local_…)는 서버가 Windows 로 연다. Edge 앱 창은 claude:// 를 Claude 앱에 넘기지 못해
+  // 「지워 ↗」 같은 승인 링크 · 세션 이름을 눌러도 반응이 없었다(11-11). 서버가 꺼져 있으면 예전처럼 브라우저가 연다
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href^="claude://"]');
+    if (!a || e.button !== 0) return;
+    const m = /(local_[0-9a-f-]{36})/.exec(a.getAttribute('href') || '');
+    if (!m) return;
+    e.preventDefault();
+    api('/api/open', { session_id: m[1] }).catch(() => { location.href = a.href; });
+  }, true);
   let linked = false;
   const setLink = (on, text) => {
     linked = on;
@@ -1773,9 +1814,142 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   // ── 카드 상세 드로어 (JIRA 이슈 보기 식) ──
   const drawer = $('#drawer');
   const STATUS_COL = { '내 답 대기': 'var(--accent)', '실행 중': 'var(--c-blue)', '완료': 'var(--c-green)', '정리 후보': 'var(--fg-3)' };
+  // ── 대화 전문(읽기 전용, 11-11): 상세 창을 열면 그 세션 대화 파일의 끝부분을 불러오고, 열려 있는 동안 3초마다
+  //    새로 붙은 줄만 더한다. 위의 「이전 대화 더 보기」로 앞을 더 읽는다. 글은 전부 textContent 로 넣는다(대화 속 HTML 이 실행되지 않게)
+  const conv = { sid: '', start: 0, end: 0, timer: null, busy: false, lastDay: '' };
+  const convBox = () => $('#d-conv');
+  const KST = (ts) => { const d = new Date(ts); return isNaN(d) ? null : d; };
+  // 가벼운 마크다운(앱 대화창처럼 읽히게): 코드 블록 · 표 · 목록 · 제목 · 인용과 줄 안의 **굵게** · `코드` · [글](링크).
+  // innerHTML 을 쓰지 않고 요소를 만들어 글은 textContent 로만 넣는다
+  const mdInline = (s, into) => {
+    const re = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))/g;
+    let i = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > i) into.append(txt(s.slice(i, m.index)));
+      const t = m[0];
+      if (t.startsWith('**')) into.append(el('b', '', t.slice(2, -2)));
+      else if (t.startsWith('`')) into.append(el('code', '', t.slice(1, -1)));
+      else {
+        const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(t);
+        if (lm && /^(https?:|claude:)/.test(lm[2])) { const a = el('a', '', lm[1]); a.href = lm[2]; a.target = '_blank'; a.rel = 'noopener'; into.append(a); }
+        else into.append(txt(lm ? lm[1] : t));
+      }
+      i = m.index + t.length;
+    }
+    if (i < s.length) into.append(txt(s.slice(i)));
+  };
+  const mdBlock = (text) => {
+    const root = document.createDocumentFragment();
+    const lines = String(text).split('\n');
+    for (let i = 0; i < lines.length;) {
+      const ln = lines[i];
+      if (/^\s*```/.test(ln)) {  // 코드 블록
+        const buf = []; i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+        i++; root.append(el('pre', 'md-code', buf.join('\n'))); continue;
+      }
+      if (/^\s*\|.*\|\s*$/.test(ln)) {  // 표
+        const rows = [];
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
+        const table = el('table', 'md-table');
+        rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r)).forEach((r, ri) => {
+          const tr = el('tr');
+          r.trim().slice(1, -1).split('|').forEach((c) => { const cell = el(ri === 0 ? 'th' : 'td'); mdInline(c.trim(), cell); tr.append(cell); });
+          table.append(tr);
+        });
+        root.append(table); continue;
+      }
+      if (/^\s*([-*]|\d+\.)\s+/.test(ln)) {  // 목록(들여쓰기는 왼쪽 여백으로)
+        const ul = el('div', 'md-list');
+        while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
+          const mm = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(lines[i++]);
+          const li = el('div', 'md-li'); li.style.paddingLeft = (Math.min(mm[1].length, 8) * 7 + 12) + 'px';
+          li.dataset.mark = /\d/.test(mm[2]) ? mm[2] : '•'; mdInline(mm[3], li); ul.append(li);
+        }
+        root.append(ul); continue;
+      }
+      const hm = /^(#{1,4})\s+(.*)$/.exec(ln);
+      if (hm) { const h = el('div', 'md-h'); mdInline(hm[2], h); root.append(h); i++; continue; }
+      if (/^\s*>\s?/.test(ln)) { const q = el('div', 'md-quote'); mdInline(ln.replace(/^\s*>\s?/, ''), q); root.append(q); i++; continue; }
+      if (!ln.trim()) { root.append(el('div', 'md-gap')); i++; continue; }
+      const p = el('div', 'md-p'); mdInline(ln, p); root.append(p); i++;
+    }
+    return root;
+  };
+  const msgEl = (it) => {
+    const d = el('div', 'msg ' + (it.k === 'text' ? it.r : it.k) + (it.err ? ' err' : ''));
+    if (it.k === 'text' && it.r === 'assistant') d.append(mdBlock(it.t));
+    else if (it.k === 'tool') d.append(el('b', '', '🔧 ' + (it.n || '') + ' '), txt(it.t));
+    else if (it.k === 'notice') { d.textContent = '🔔 ' + it.t.replace(/\s+/g, ' ').slice(0, 240); d.title = it.t.slice(0, 3000); }
+    else if (it.k === 'relay') { d.textContent = '📨 다른 세션의 메시지 · ' + it.t.replace(/\s+/g, ' ').slice(0, 240); d.title = it.t.slice(0, 3000); }
+    else d.textContent = it.t;
+    const t = KST(it.ts);
+    if (t) d.title = (d.title ? d.title + '\n' : '') + t.toLocaleString('ko-KR');
+    return d;
+  };
+  const dayEl = (it) => {  // 날짜가 바뀌는 자리에 한 줄
+    const t = KST(it.ts); if (!t) return null;
+    const day = t.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    if (day === conv.lastDay) return null;
+    conv.lastDay = day; return el('div', 'day', '— ' + day + ' —');
+  };
+  const convUrl = (q) => API + '/api/transcript?t=' + encodeURIComponent(TOKEN) + '&sid=' + encodeURIComponent(conv.sid) + q;
+  const convLoad = async (sid) => {
+    clearInterval(conv.timer);
+    Object.assign(conv, { sid, start: 0, end: 0, busy: false, lastDay: '' });
+    const box = convBox(); box.textContent = ''; box.append(el('span', 'nosum', '불러오는 중…'));
+    try {
+      const r = await fetch(convUrl('')).then((x) => x.ok ? x.json() : Promise.reject(new Error(x.status === 404 ? '이 세션의 대화 파일을 못 찾았어요' : 'HTTP ' + x.status)));
+      if (conv.sid !== sid) return;
+      box.textContent = '';
+      if (r.more) box.append(moreBtn());
+      for (const it of r.items) { const dEl = dayEl(it); if (dEl) box.append(dEl); box.append(msgEl(it)); }
+      if (!r.items.length) box.append(el('span', 'nosum', '아직 대화가 없어요'));
+      conv.start = r.start; conv.end = r.end;
+      box.scrollTop = box.scrollHeight;
+      conv.timer = setInterval(convTail, 3000);
+    } catch (e) { box.textContent = ''; box.append(el('span', 'nosum', /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message)); }
+  };
+  const convTail = async () => {  // 새로 붙은 줄만. 아래쪽을 보고 있었으면 계속 맨 아래로 따라간다
+    if (conv.busy || !conv.sid || drawer.classList.contains('hidden')) return;
+    conv.busy = true;
+    try {
+      const r = await fetch(convUrl('&after=' + conv.end)).then((x) => x.ok ? x.json() : null);
+      if (r && r.items.length && conv.sid) {
+        const box = convBox(); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+        box.querySelectorAll(':scope > .nosum').forEach((x) => x.remove());
+        for (const it of r.items) { const dEl = dayEl(it); if (dEl) box.append(dEl); box.append(msgEl(it)); }
+        if (atEnd) box.scrollTop = box.scrollHeight;
+      }
+      if (r) conv.end = r.end;
+    } catch {}
+    conv.busy = false;
+  };
+  const moreBtn = () => {
+    const b = el('button', 'more', '⬆ 이전 대화 더 보기'); b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = '불러오는 중…';
+      try {
+        const r = await fetch(convUrl('&before=' + conv.start)).then((x) => x.json());
+        const box = convBox(); const h0 = box.scrollHeight;
+        const frag = document.createDocumentFragment();
+        if (r.more) frag.append(moreBtn());
+        const saved = conv.lastDay; conv.lastDay = '';
+        for (const it of r.items) { const dEl = dayEl(it); if (dEl) frag.append(dEl); frag.append(msgEl(it)); }
+        conv.lastDay = saved;
+        b.replaceWith(frag);
+        conv.start = r.start;
+        box.scrollTop += box.scrollHeight - h0;  // 보던 자리 그대로
+      } catch { b.disabled = false; b.textContent = '⬆ 다시 시도'; }
+    });
+    return b;
+  };
+  $('#d-conv-res').addEventListener('change', (e) => convBox().classList.toggle('show-res', e.target.checked));
+  $('#d-conv-note').addEventListener('change', (e) => convBox().classList.toggle('show-note', e.target.checked));
   const closeDrawer = () => {
     if (drawer.classList.contains('hidden')) return;
     drawer.classList.add('hidden');
+    clearInterval(conv.timer); conv.sid = '';
     drawerSid = '';
     setTimeout(() => { markRelated(); drawArrows(); }, 0);
     document.body.classList.remove('drawer-open');
@@ -1894,6 +2068,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     history.replaceState(null, '', '#s=' + sid);
     paintDrawerLive();
     paintDrawerLinks();
+    if (conv.sid !== sid) convLoad(sid);
     markRelated(); drawArrows();
   };
   $('#d-x').addEventListener('click', closeDrawer);
