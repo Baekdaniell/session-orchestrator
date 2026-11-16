@@ -167,10 +167,10 @@ def sync_scripts(quiet=False, force=False) -> bool:
     return True
 
 
-def run_script(name, *args, capture=False):
+def run_script(name, *args, capture=False, timeout=None):
     """설치된 도구를 이 앱(개발 중이면 이 파이썬)으로 따로 띄워 돌린다."""
     return subprocess.run([EXE, "-I", str(SCRIPTS / name), *map(str, args)],
-                          capture_output=capture, text=True, encoding="utf-8", errors="replace")
+                          capture_output=capture, text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def osa(lines, *args, timeout=600):
@@ -238,6 +238,15 @@ def health_url(seconds=20.0) -> str:
 
 
 def open_url(url: str):
+    """상황판 열기는 board-agent.py --open 에 맡긴다(크로뮴 계열이면 앱 창, 없으면 기본 브라우저 — 규칙은 그쪽 한 곳)."""
+    try:
+        r = run_script("board-agent.py", "--open", capture=True, timeout=30)
+    except subprocess.TimeoutExpired:  # 브라우저가 첫 실행 확인 창 등으로 늦는 것 — 두 번 열지 않는다
+        say("  상황판 열기가 30초 안에 끝나지 않았습니다(창이 늦게 뜰 수 있음)")
+        return
+    if r.returncode == 0:
+        return
+    say("  상황판 열기 실패 — 기본 브라우저로:", (r.stdout or r.stderr or "").strip()[-200:])
     if sys.platform == "darwin":
         subprocess.run(["open", url])
     else:

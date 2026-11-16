@@ -15,7 +15,9 @@ install.sh 로 깐 시스템 파이썬엔 보통 없어 아이콘 없이 돈다(
   python3 -I scripts/board-agent.py --install          LaunchAgent 를 쓰고 launchctl 로 띄운다(로그인 때마다 자동 실행, 비정상 종료면 다시 띄움).
             [--python 경로]                             LaunchAgent 가 쓸 파이썬(기본: 지금 이 파이썬). install.sh 가 찾은 경로를 넘긴다
   python3 -I scripts/board-agent.py --uninstall        LaunchAgent 를 내리고 지운다(상주도 꺼짐).
-  python3 -I scripts/board-agent.py --open             상황판을 기본 브라우저로 연다. 서버가 응답하지 않으면 이유를 찍고 끝난다.
+  python3 -I scripts/board-agent.py --open             상황판을 연다 — Chrome · Edge 같은 크로뮴 계열이 있으면 탭 · 주소창 없는 앱 창
+                                                       (Windows 트레이의 Edge 앱 창과 같게), 없으면 기본 브라우저. 서버가 응답하지 않으면 이유를 찍고 끝난다.
+  python3 -I scripts/board-agent.py --open-in app|tab  상황판을 앱 창(기본)으로 열지, 기본 브라우저 탭으로 열지.
   python3 -I scripts/board-agent.py --status           상주 · 서버 상태와 마지막 이유를 찍는다.
   python3 -I scripts/board-agent.py --notify on|off    알림 켜기 · 끄기(떠 있는 상주가 다음 주기에 따른다).
   python3 -I scripts/board-agent.py --test-notify      시험 알림을 하나 보낸다.
@@ -567,7 +569,7 @@ def run_menubar(agent, cleanup):
 
     def open_now():
         if agent.ok:
-            subprocess.run(["open", agent.base + "/"])
+            open_url(agent.base + "/")
         else:
             mac_notify("상황판 서버를 못 띄웠어요", f"{agent.status}\n기록: {LOG}")
 
@@ -751,6 +753,42 @@ def health(port: int, timeout=2.0):
         return json.loads(r.read().decode("utf-8"))
 
 
+# 상황판 창: Windows 트레이가 Edge 앱 창(--app)으로 여는 것과 같게, 크로뮴 계열 브라우저가 있으면 탭 · 주소창 없는 앱 창으로 연다
+APP_BROWSERS = ("Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium")
+
+
+def app_browser() -> str:
+    """--app 창을 열 수 있는 브라우저 앱 경로(/Applications · ~/Applications 순). 없으면 빈 글자."""
+    for name in APP_BROWSERS:
+        for base in (Path("/Applications"), Path.home() / "Applications"):
+            if (base / f"{name}.app" / "Contents" / "MacOS" / name).exists():
+                return str(base / f"{name}.app")
+    return ""
+
+
+def open_url(url: str) -> str:
+    """상황판을 연다. 크로뮴 계열이 있으면 앱 창, 없거나 설정이 tab 이면(--open-in tab) 기본 브라우저 탭. 어떻게 열었는지 돌려준다."""
+    if sys.platform != "darwin":
+        webbrowser.open(url)
+        return "기본 브라우저"
+    app = "" if load_settings().get("open_in") == "tab" else app_browser()
+    if app:
+        # -n: 브라우저가 이미 떠 있어도 --app 인자를 넘기려고 새로 띄운다(떠 있던 브라우저가 받아 창만 하나 연다).
+        # 출력을 잡지 않고(DEVNULL) 15초만 기다린다 — 출력을 파이프로 잡으면 띄운 브라우저가 파이프를 물고 있어 끝없이 기다렸다
+        # (11-16 macOS 러너 실측: 38분 멈춤). 15초가 지나도 안 끝나면 브라우저 첫 실행 확인 창 등으로 보고 띄운 것으로 친다
+        try:
+            r = subprocess.run(["open", "-na", app, "--args", f"--app={url}", "--no-first-run", "--no-default-browser-check"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        except subprocess.TimeoutExpired:
+            log("앱 창: open 이 15초 안에 끝나지 않아 띄운 것으로 봄:", app)
+            return Path(app).stem + " 앱 창"
+        if r.returncode == 0:
+            return Path(app).stem + " 앱 창"
+        log(f"앱 창 열기 실패(open 종료 코드 {r.returncode}) — 기본 브라우저로:", app)
+    subprocess.run(["open", url])
+    return "기본 브라우저"
+
+
 def open_board() -> int:
     port = valid_port(read_config().get("port"))
     url = f"http://127.0.0.1:{port}/"
@@ -762,11 +800,17 @@ def open_board() -> int:
         print("  다시 띄우기:", RESTART_HINT)
         print("  로그:", LOG)
         return 1
-    if sys.platform == "darwin":
-        subprocess.run(["open", url])
-    else:
-        webbrowser.open(url)
-    print("열었습니다:", url)
+    how = open_url(url)
+    print(f"열었습니다: {url} ({how})")
+    return 0
+
+
+def set_open_in(mode: str) -> int:
+    s = load_settings()
+    s["open_in"] = mode
+    ROOT.mkdir(exist_ok=True)
+    write_json(SETTINGS, s)
+    print("상황판 열기:", "크로뮴 계열 브라우저의 앱 창(없으면 기본 브라우저)" if mode == "app" else "기본 브라우저 탭")
     return 0
 
 
@@ -871,6 +915,7 @@ def main() -> int:
     g.add_argument("--open", action="store_true", help="상황판을 기본 브라우저로 열기")
     g.add_argument("--status", action="store_true", help="상주 · 서버 상태")
     g.add_argument("--notify", choices=("on", "off"), help="알림 켜기 · 끄기")
+    g.add_argument("--open-in", choices=("app", "tab"), help="상황판을 앱 창(크로뮴 계열, 기본)으로 열지 기본 브라우저 탭으로 열지")
     g.add_argument("--test-notify", action="store_true", help="시험 알림 보내기")
     ap.add_argument("--python", default=sys.executable, help="--install 때 LaunchAgent 가 쓸 파이썬 경로")
     a = ap.parse_args()
@@ -882,6 +927,8 @@ def main() -> int:
         return open_board()
     if a.status:
         return show_status()
+    if a.open_in:
+        return set_open_in(a.open_in)
     if a.notify:
         return set_notify(a.notify == "on")
     if a.test_notify:

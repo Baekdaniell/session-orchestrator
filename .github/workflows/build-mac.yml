@@ -102,6 +102,7 @@ jobs:
           ls -la dist
 
       - name: Smoke test — app from dmg (setup, server, skill commands)
+        timeout-minutes: 10   # 멈추면 작업 전체(40분)를 다 쓰지 않게
         run: |
           mkdir -p "$RUNNER_TEMP/smoke"
           dump() {   # 실패해도 원인을 볼 수 있게 상주 상태 · 기록을 찍고 결과물로 남긴다
@@ -134,11 +135,16 @@ jobs:
           sleep 6
 
       - name: Check menu bar icon, take screenshots
+        timeout-minutes: 4   # 멈추면 작업 전체(40분)를 다 쓰지 않게
         continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/smoke"
           screencapture -x "$RUNNER_TEMP/smoke/1-menubar.png" || echo "screencapture 실패"
-          open "http://127.0.0.1:18799/"
+          # 러너의 Chrome 은 내려받은 뒤 한 번도 안 연 앱이라 「인터넷에서 받은 앱 — 열까요?」 확인 창이 막는다(11-16 화면 캡처).
+          # 평소 쓰는 Mac 과 같게 그 격리 표시를 지운 뒤 연다(러너에서만)
+          sudo xattr -dr com.apple.quarantine "/Applications/Google Chrome.app" 2>/dev/null || true
+          # 사용자가 메뉴에서 여는 길과 같게(크로뮴 계열이면 앱 창). 러너엔 Chrome · Edge 가 깔려 있다
+          "/Applications/$APP_NAME.app/Contents/MacOS/SessionOrchestrator" open || open "http://127.0.0.1:18799/"
           sleep 10
           screencapture -x "$RUNNER_TEMP/smoke/2-board.png" || echo "screencapture 실패"
           if ! grep -q "메뉴 막대 아이콘 시작" ~/SessionOrchestrator/board/agent.log || grep -q "메뉴 막대 실패" ~/SessionOrchestrator/board/agent.log; then
@@ -147,6 +153,7 @@ jobs:
           fi
 
       - name: Smoke test — app uninstall
+        timeout-minutes: 5   # 멈추면 작업 전체(40분)를 다 쓰지 않게
         run: |
           cp ~/SessionOrchestrator/board/*.log ~/SessionOrchestrator/board/agent-status.json "$RUNNER_TEMP/smoke/" 2>/dev/null || true
           "/Applications/$APP_NAME.app/Contents/MacOS/SessionOrchestrator" uninstall
@@ -160,6 +167,7 @@ jobs:
           fi
 
       - name: Smoke test — terminal install (install.sh, bash 3.2)
+        timeout-minutes: 10   # 멈추면 작업 전체(40분)를 다 쓰지 않게
         run: |
           trap 'for f in ~/SessionOrchestrator/board/*.log; do echo "── $f"; cat "$f"; done 2>/dev/null || true' EXIT
           /bin/bash --version | head -1
