@@ -9,7 +9,6 @@
 그 폴더의 대화 폴더(~/.claude/projects/<슬러그>*, 메모리가 있는 곳) 안일 때만 읽는다. 쓰기는 없다.
 서버는 토큰을 확인한 뒤에만 이 함수들을 부른다.
 """
-from __future__ import annotations
 
 import json
 import os

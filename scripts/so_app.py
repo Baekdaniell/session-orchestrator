@@ -14,6 +14,8 @@
 판정 데이터 · 설정 · 로그는 그대로 %USERPROFILE%\\SessionOrchestrator\\board 에 두어 옛 버전의 데이터를 이어받는다.
 """
 # PyInstaller 가 함께 넣도록, exe 안의 스크립트들이 쓰는 표준 모듈을 여기서 미리 불러 둔다
+# (스크립트에 「from __future__ import …」를 쓰면 그 모듈도 있어야 한다 — v1.4.0 은 이게 빠져 서버가 안 떴다)
+import __future__  # noqa: F401
 import argparse  # noqa: F401
 import collections  # noqa: F401
 import ctypes
@@ -50,7 +52,7 @@ from pathlib import Path
 
 APP = "SessionOrchestrator"
 TITLE = "Session Orchestrator"
-VERSION = "1.4.0"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
+VERSION = "1.4.1"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
 HOME = Path(os.environ.get("USERPROFILE") or Path.home()) / APP  # 데이터 폴더(board/)
 FROZEN = bool(getattr(sys, "frozen", False))
 EXE = Path(sys.executable).resolve() if FROZEN else HOME / (APP + ".exe")  # 지금 도는 exe(압축 푼 자리)

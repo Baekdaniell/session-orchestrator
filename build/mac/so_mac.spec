@@ -18,7 +18,7 @@ STDLIB = [
     "argparse", "collections", "datetime", "errno", "fcntl", "glob", "http.server", "importlib.util", "json", "os",
     "pathlib", "plistlib", "re", "secrets", "signal", "socket", "socketserver", "struct", "subprocess", "threading",
     "time", "urllib.parse", "urllib.request", "webbrowser", "zlib", "email.utils", "html", "mimetypes", "runpy",
-    "faulthandler", "ctypes", "shutil", "uuid",
+    "faulthandler", "ctypes", "shutil", "uuid", "__future__",
 ]
 PYOBJC = ["objc", "AppKit", "Foundation", "PyObjCTools"]  # 메뉴 막대 아이콘(board-agent.py run_menubar)
 
