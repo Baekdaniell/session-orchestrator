@@ -1289,6 +1289,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       row.append(b);
       (node.tagName === 'TR' ? node.firstChild : node).append(row);
     }
+    node._row = r;  // 순서만 바뀔 때 카드를 새로 만들지 않고 자리만 옮기려고(reorderInPlace)
     items.push(node);
     list.append(node);
   };
@@ -1400,7 +1401,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     }
   };
 
-  // ── 레이아웃 kanban: 칸반(위쪽 「지금 도는 중」 띠 + 아래 3열) ──
+  // ── 레이아웃 kanban: 칸반(위쪽 「실행 중」 띠 + 아래 3열) ──
   // 11-17 작업자: 실행 중 열이 대부분 비어 가운데가 텅 빔 → 실행 중은 띠로(없으면 한 줄), 내 답 대기를 가장 넓게, 정리 후보는 한 줄 목록
   const buildKanban = (app) => {
     app.innerHTML = `
@@ -1418,18 +1419,20 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       const run = g.key === 'running';
       const col = box(g, 'div'); col.classList.add('kb-col');
       if (run) col.classList.add('kb-run');
-      const head = el('div', 'kb-head'); head.append(el('i', 'dot'), txt(g.icon + ' ' + (run ? '지금 도는 중' : g.status)), el('span', 'cnt'));
+      const head = el('div', 'kb-head'); head.append(el('i', 'dot'), txt(g.icon + ' ' + g.status), el('span', 'cnt'));
       const list = el('div', 'kb-list'); list.dataset.list = ''; list.dataset.wrap = '';
-      col.append(head, el('p', 'empty hidden', run ? '도는 세션 없음' : g.empty), list);
+      col.append(head, el('p', 'empty hidden', run ? '실행 중인 세션 없음' : g.empty), list);
       sorted(g).forEach((r) => {
         const slim = g.key === 'cleanup';
         const c = el('article', 'kb-card' + (slim ? ' slim' : ''));
         const meta = el('div', 'meta'); meta.append(tag(r.section));
         if (r.due) meta.append(dueEl(r));
-        meta.append(el('span', 'time', lastOf(r)));
+        const tm = el('span', 'time', lastOf(r)); tm.dataset.last = '';  // data-last · data-res = 실시간 갱신이 글자만 고치는 자리(softPatch)
+        meta.append(tm);
         const ttl = el('div', 'ttl ctitle'); ttl.append(sessionEl(r));  // 모든 열에서 세션 이름이 카드 제목(맨 위)
         if (slim) {  // 정리 후보: 이름 · 마지막 활동 한 줄(할 일이 있으면 그 아래 한 줄)
-          const row = el('div', 'slim-row'); row.append(ttl, el('span', 'time', lastOf(r)));
+          const tm2 = el('span', 'time', lastOf(r)); tm2.dataset.last = '';
+          const row = el('div', 'slim-row'); row.append(ttl, tm2);
           c.append(row);
           if (hasTodo(r)) c.append(el('div', 'sub', '☑ ' + r.todo));
           mount(list, r, c);
@@ -1443,11 +1446,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         }
         if (g.key === 'waiting') {
           if (hasTodo(r)) c.append(el('div', 'todo-line', r.todo));
-          c.append(el('div', 'sub', resOf(r)), meta);
+          const rs = el('div', 'sub', resOf(r)); rs.dataset.res = '';
+          c.append(rs, meta);
           if (r.handed_by) { const foot = el('div', 'foot'); foot.append(fromEl(r)); c.append(foot); }
         } else {
           if (hasTodo(r)) c.append(el('div', 'sub', '☑ ' + r.todo));
-          if (g.key !== 'cleanup') c.append(el('div', 'sub', resOf(r)));
+          if (g.key !== 'cleanup') { const rs = el('div', 'sub', resOf(r)); rs.dataset.res = ''; c.append(rs); }
           c.append(meta);
         }
         mount(list, r, c);
@@ -1634,11 +1638,40 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   let drawn = null;
   const renderPage = (layoutId) => {
     const d = LAYOUTS.find((x) => x.id === layoutId) || LAYOUTS[0];
+    const y = window.scrollY;  // 다시 그려도 보던 자리 그대로
     items = [];
     app.innerHTML = '';
     d.build(app);
     wire(app);
     drawn = d.id;
+    if (y) window.scrollTo(0, y);
+  };
+  // 실시간 갱신에서 순서만 바뀌었을 때(도는 세션의 활동 시각): 카드를 새로 만들지 않고 목록 안 자리만 옮긴다.
+  // 예전엔 순서만 바뀌어도 페이지 전체를 다시 만들어 몇 초마다 깜빡이고 마우스 올림 · 스크롤이 풀렸다(11-17 「버벅」).
+  // 한 목록에 여러 상태가 섞인 레이아웃이면 false → 전체를 다시 그린다
+  // 판정 뒤 결과 줄 · 마지막 활동 시각만 바뀐 것: 카드를 새로 만들지 않고 그 글자만 고친다. 고칠 자리(data-res · data-last)가 없는 레이아웃이면 false
+  const softPatch = () => {
+    let spots = 0;
+    for (const n of items) {
+      if (!n._row) continue;
+      for (const x of n.querySelectorAll('[data-res]')) { spots++; const v = resOf(n._row); if (x.textContent !== v) x.textContent = v; }
+      for (const x of n.querySelectorAll('[data-last]')) { spots++; const v = lastOf(n._row); if (x.textContent !== v) x.textContent = v; }
+    }
+    return spots > 0;
+  };
+  const reorderInPlace = () => {
+    for (const list of $$('[data-list]', app)) {
+      const all = [...list.children];
+      const cards = all.filter((n) => n._row);
+      if (cards.length < 2) continue;
+      if (cards.some((n) => n._row.status !== cards[0]._row.status)) return false;
+      const want = cards.slice().sort((a, b) => lastTs(b._row) - lastTs(a._row));
+      if (want.every((n, i) => n === cards[i])) continue;
+      let k = 0;
+      const next = all.map((n) => (n._row ? want[k++] : n));  // 카드가 있던 자리에만 새 순서로
+      next.forEach((n) => list.append(n));
+    }
+    return true;
   };
 
   // ── 모양 설정: 프리셋 · 레이아웃 · 스킨 · 색 구성표 · 색 테마 · 강조색 · 글꼴 · 글자 크기 · CSS 스니펫 ──
@@ -1877,7 +1910,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   }
   const hostLoad = async () => {
     const k = hostKey();
-    if (!k || drawer.classList.contains('hidden')) return;
+    if (!k || drawer.classList.contains('hidden') || document.hidden) return;
     try {
       const s = await api('/api/host/state?' + k);
       if (hostKey() !== k) return;
@@ -2243,7 +2276,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     } catch (e) { box.textContent = ''; box.append(el('span', 'nosum', /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message)); }
   };
   const convTail = async () => {  // 새로 붙은 줄만. 아래쪽을 보고 있었으면 계속 맨 아래로 따라간다
-    if (conv.busy || !conv.sid || drawer.classList.contains('hidden')) return;
+    if (conv.busy || !conv.sid || drawer.classList.contains('hidden') || document.hidden) return;
     conv.busy = true;
     try {
       const r = await fetch(convUrl('&after=' + conv.end)).then((x) => x.ok ? x.json() : null);
@@ -2332,7 +2365,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     $('#mdv-q').focus();
   }
   const docTail = async () => {
-    if (mdv.busy || !mdv.cur || $('#mdv').classList.contains('hidden')) return;
+    if (mdv.busy || !mdv.cur || $('#mdv').classList.contains('hidden') || document.hidden) return;
     mdv.busy = true;
     try {
       const r = await getJSON(docUrl(docQuery({ path: mdv.cur.path }) + '&ver=' + encodeURIComponent(mdv.cur.ver)));
@@ -2521,7 +2554,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       let asked = false;
       try { asked = !!sessionStorage.getItem(key); } catch {}
       const head = '↻ 판정(' + r.judged_at + ') 뒤에 세션이 더 움직였어요 — 마지막 ' + r.stale.last + '. 할 일·요약은 판정 때 기준이에요. ';
-      if (busyNow) banner.textContent = head + '지금 도는 중이라, 끝난 뒤 이 창을 다시 열면 다시 판정해요.';
+      if (busyNow) banner.textContent = head + '지금 실행 중이라, 끝나고 이 창을 다시 열면 다시 판정해요.';
       else if (asked) banner.textContent = head + '「' + sb.textContent.replace(/^\S+ /, '') + '」를 누르면 다시 판정해요.';
       else {
         banner.textContent = head + '관제 세션에 다시 판정을 맡겼어요.';
@@ -2564,10 +2597,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   let drawerSid = '';
   let drawerCli = '';  // 사이드바 id 없는 카드(세오가 직접 시작한 새 세션 등)는 대화 id 로 연다
   let liveData = null, pendingRender = false, liveFailed = false;
+  let softRender = false, lastSoft = Date.now(), liveDirty = false;  // 모아서 다시 그리기 · 창이 안 보이는 동안 받은 갱신
   rows.forEach((r) => { r.judged = r.status; });
   const fmtTok = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n || 0);
   const sumIn = (t) => (t.input_tokens || 0) + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0);
-  const busy = () => !composer.classList.contains('hidden') || !drawer.classList.contains('hidden') || $('#q')?.value || $$('.chip[aria-pressed="true"]').length;
+  // 다시 그리기를 미루는 때: 입력 · 상세 창 · 검색 · 칩 필터 중, 그리고 카드에 마우스를 올려 둔 동안(누르려는 순간 카드가 바뀌지 않게)
+  const busy = () => !composer.classList.contains('hidden') || !drawer.classList.contains('hidden') || $('#q')?.value || $$('.chip[aria-pressed="true"]').length
+    || !!document.querySelector('[data-list] > :hover');
   const effStatus = (r, e) => {
     if (e && (e.state === 'working' || e.state === 'waiting_tool')) return '실행 중';
     // 작업자에게 묻고 멈춘 세션은 판정과 상관없이 내 답 대기(11-10). 정리 후보로 판정된 오래된 질문만 그 열에 두고 띠만 붙인다
@@ -2740,7 +2776,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   };
   const applyLive = () => {
     const d = liveData;
-    let changed = false;
+    let changed = false, soft = false;
     if (d && d.ready && d.sessions) {
       const sig0 = orderSig();
       // 앱 세션 기록에 없거나 보관된 세션(다른 곳에서 보관·삭제) → 판정 행이라도 바로 뺀다(11-10)
@@ -2759,7 +2795,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         const st = (e && e.ts && r.judged_at && e.ts * 1000 > mdTs(r.judged_at) + 60000)
           ? { last: e.last || r.last_active, text: e.app_detail || e.text || '', app: !!e.app_detail, state: e.state } : null;
         const sk = st ? st.last + '|' + st.text : '';
-        if (sk !== (r.staleKey || '')) { r.stale = st; r.staleKey = sk; changed = true; }
+        // 판정 뒤 결과 줄 · 시각만 바뀐 것: 도는 세션마다 1분에 한 번꼴이라 바로 다시 그리지 않고 모아서(softRender, 30초에 한 번 · 조용할 때)
+        if (sk !== (r.staleKey || '')) { if (!!r.stale !== !!st) changed = true; else soft = true; r.stale = st; r.staleKey = sk; }
         else if (st) r.stale.state = st.state;
       }
       // 짝 없는(판정 뒤 새로 생긴) 도는 세션: 임시 카드
@@ -2790,12 +2827,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
           section: '미분류', todo: '없음', due: '', result: u.text || u.label, last_active: u.last, handed_by: '', judged_at: '', link: '' });
         changed = true;
       }
-      if (orderSig() !== sig0) changed = true;  // 순서만 바뀌어도 다시 그린다
+      // 순서만 바뀌었으면 자리만 옮긴다(전체 다시 그리기 대신). 옮길 수 없는 레이아웃이면 다시 그린다
+      if (!changed && orderSig() !== sig0 && !reorderInPlace()) changed = true;
     }
     if (changed) {
       if (busy()) pendingRender = true;
       else { renderPage(drawn); }
     }
+    else if (soft && !softPatch()) softRender = true;  // 글자만 고칠 자리가 없으면 모아서 다시 그린다
     // 임시 카드에는 cli 를 붙여 실시간 줄을 칠할 수 있게
     for (const node of items) {
       if (node.dataset.sid) continue;
@@ -2805,7 +2844,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     paintCards();
   };
   // 드로어·입력창을 닫거나 검색을 비우면 밀린 다시 그리기를 한다
-  setInterval(() => { if (pendingRender && !busy()) { pendingRender = false; renderPage(drawn); paintCards(); } }, 1500);
+  setInterval(() => {
+    if (document.hidden || busy()) return;
+    if (pendingRender) { pendingRender = false; softRender = false; lastSoft = Date.now(); renderPage(drawn); paintCards(); }
+    else if (softRender && Date.now() - lastSoft > 60000) { softRender = false; lastSoft = Date.now(); renderPage(drawn); paintCards(); }
+  }, 1500);
   // ── 세션 사이 연결: 카드 배지(미처리·처리 중) + SVG 화살표 + 마우스 강조 + 상세 창 목록 ──
   const titleOf = (sid) => { const r = allRows.find((x) => sidOf(x) === sid); return r ? r.session : '모르는 세션 ' + sid.slice(6, 14); };
   const EDGE_LABEL = { unread: '미처리', working: '처리 중', handled: '처리됨', replied: '회신함', unknown: '상대 파일 모름' };
@@ -3098,13 +3141,21 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   let es = null;
   const connectLive = () => {
     try { es = new EventSource(API + '/api/stream?t=' + encodeURIComponent(TOKEN)); } catch { liveData = null; paintCards(); return; }
-    es.onmessage = (ev) => { try { liveFailed = false; liveData = JSON.parse(ev.data); applyLive(); } catch {} };
+    // 창이 안 보이면(최소화 · 다른 창에 가려짐) 받기만 하고 그리지 않는다 → 다시 보일 때 한 번에(아래 visibilitychange)
+    es.onmessage = (ev) => { try { liveFailed = false; liveData = JSON.parse(ev.data); if (document.hidden) liveDirty = true; else applyLive(); } catch {} };
     es.onerror = () => { liveFailed = true; liveData = null; paintCards(); };  // EventSource 가 알아서 다시 붙는다
   };
   connectLive();
 
   checkLink();
   setInterval(checkLink, 15000);
+  // 창이 다시 보이면: 안 보이는 동안 받은 실시간 갱신을 한 번에 칠하고, 열려 있던 상세 창 · 문서도 바로 따라잡는다
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (liveDirty) { liveDirty = false; applyLive(); }
+    if (!drawer.classList.contains('hidden')) { convTail(); hostLoad(); }
+    if (!$('#mdv').classList.contains('hidden')) docTail();
+  });
   reopen();
 </script>
 </body>

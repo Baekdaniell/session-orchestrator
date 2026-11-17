@@ -91,11 +91,24 @@ def _cmdlines(exe_name="claude.exe"):
     return out
 
 
-def held_by_app(cli_id):
+_CMDS = {"at": 0.0, "val": []}
+_CMDS_LOCK = threading.Lock()
+
+
+def _cmdlines_cached(ttl=3.0):
+    """프로세스 명령줄은 몇 초 묶어 쓴다(상세 창이 2.5초마다 묻고, 프로세스가 수십 개라 한 번에 0.1초쯤 걸림)."""
+    with _CMDS_LOCK:
+        if time.time() - _CMDS["at"] > ttl:
+            _CMDS["val"] = _cmdlines()
+            _CMDS["at"] = time.time()
+        return _CMDS["val"]
+
+
+def held_by_app(cli_id, fresh=False):
     """데스크톱 앱(Claude-Data 아래 claude.exe)이 --resume=<cli_id> 로 이 대화를 잡고 있으면 True.
     상황판이 띄운 CLI(npm 설치 경로에도 claude-code 가 들어감)를 앱으로 오인하지 않게 Claude-Data 경로로 가른다."""
     try:
-        for c in _cmdlines():
+        for c in (_cmdlines() if fresh else _cmdlines_cached()):
             if "/claude-data/" in c.replace("\\", "/").lower() and re.search(r"--resume[= ]\"?" + re.escape(cli_id), c):
                 return True
     except Exception:
@@ -248,7 +261,7 @@ class HostManager:
             h = self.sessions.get(cli_id)
             if h and h.alive():
                 return h
-            if resume and held_by_app(cli_id):
+            if resume and held_by_app(cli_id, fresh=True):  # 넘겨받기 직전엔 묶어 둔 값 말고 지금 값으로
                 raise PermissionError("Claude 앱이 이 세션을 열고 있어요. 앱에서 이 세션을 보관하거나 앱을 끈 뒤 여기서 이어 가세요(두 곳에서 따로 쓰면 대화가 갈라져요)")
             h = Hosted(cli_id, cwd, resume, model, effort, mode)
             h.start()

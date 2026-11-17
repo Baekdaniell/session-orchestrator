@@ -52,7 +52,7 @@ from pathlib import Path
 
 APP = "SessionOrchestrator"
 TITLE = "Session Orchestrator"
-VERSION = "1.4.1"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
+VERSION = "1.4.2"  # 릴리스 태그(vX.Y.Z)와 같아야 한다 — 빌드가 다르면 실패시킨다
 HOME = Path(os.environ.get("USERPROFILE") or Path.home()) / APP  # 데이터 폴더(board/)
 FROZEN = bool(getattr(sys, "frozen", False))
 EXE = Path(sys.executable).resolve() if FROZEN else HOME / (APP + ".exe")  # 지금 도는 exe(압축 푼 자리)
