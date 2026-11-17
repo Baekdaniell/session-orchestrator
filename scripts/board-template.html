@@ -165,6 +165,57 @@ button, input, select { font: inherit; color: inherit; }
 .drawer .conv .md-table { border-collapse: collapse; margin: 4px 0; font-size: .92em; }
 .drawer .conv .md-table th, .drawer .conv .md-table td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; }
 .drawer .conv .md-table th { background: var(--callout); }
+/* md 경로 링크(대화 · 문서 · 상세 창 「문서」): 누르면 문서 보기 창 */
+.md-link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+code.md-link { text-decoration: underline dotted; }
+/* 상세 창 「문서」: 이 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일 */
+.drawer h3 .h-note { margin-left: 6px; font-weight: 400; letter-spacing: 0; }
+.drawer .docs { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; }
+.drawer .docs .doc-row { display: flex; align-items: baseline; gap: 6px; font-size: .9em; min-width: 0; }
+.drawer .docs .doc-row .md-link { overflow-wrap: anywhere; min-width: 0; }
+.drawer .docs .op { flex: none; padding: 0 6px; border-radius: 4px; font-size: .76em; background: var(--hover); color: var(--fg-2); }
+.drawer .docs .op.w { background: color-mix(in srgb, var(--c-green) 22%, var(--panel)); color: var(--fg); }
+.drawer .docs .op.e { background: color-mix(in srgb, var(--c-blue) 22%, var(--panel)); color: var(--fg); }
+.drawer .docs .tm { margin-left: auto; flex: none; padding-left: 8px; color: var(--fg-3); font-size: .78em; }
+.drawer .docs .more { align-self: flex-start; margin-top: 4px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg-2); font-size: .82em; cursor: pointer; }
+/* 문서 보기 창(md 읽기 전용, 11-17): 왼쪽 목록(최근 바뀐 md) + 오른쪽 본문. 열어 두면 몇 초마다 바뀐 내용을 다시 그린다 */
+.tl.mdv { inset: 24px max(24px, calc((100vw - 1200px) / 2)); z-index: 32; }
+.mdv .tl-h { gap: 8px 12px; }
+.mdv .tl-h .x { margin-left: 0; }
+.mdv .tl-h .lt[disabled] { opacity: .4; cursor: default; }
+.mdv .mdv-name { font-weight: 700; font-size: 14px; }
+.mdv .mdv-rel { color: var(--fg-3); font: 12px ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.mdv .mdv-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.mdv .mdv-acts label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--fg-2); }
+.mdv-b { flex: 1; display: flex; min-height: 0; }
+.mdv-list { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.mdv-list input { margin: 10px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: inherit; }
+.mdv-items { flex: 1; overflow: auto; padding: 0 6px 12px; }
+.mdv-items .nosum, .mdv-items .note { display: block; padding: 6px 8px; color: var(--fg-3); }
+.mdv-items button { display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.mdv-items button:hover, .mdv-items button.on { background: var(--hover); }
+.mdv-items button .p { display: block; color: var(--fg-3); font-size: 11px; overflow-wrap: anywhere; }
+.mdv-doc { flex: 1; overflow: auto; padding: 18px 28px 48px; }
+.mdv-doc .nosum { color: var(--fg-3); }
+.mdx { max-width: 880px; margin: 0 auto; font: 14.5px/1.7 var(--font); overflow-wrap: anywhere; }
+.mdx pre.raw { margin: 0; white-space: pre-wrap; font: 13px/1.55 ui-monospace, Consolas, monospace; }
+.mdx .md-p, .mdx .md-li, .mdx .md-quote { white-space: pre-wrap; }
+.mdx .md-gap { height: .55em; }
+.mdx .md-h { font-weight: 700; margin: 12px 0 4px; line-height: 1.35; }
+.mdx .md-h1 { font-size: 1.55em; margin-top: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.mdx .md-h2 { font-size: 1.28em; margin-top: 20px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.mdx .md-h3 { font-size: 1.1em; margin-top: 16px; }
+.mdx .md-li { position: relative; }
+.mdx .md-li::before { content: attr(data-mark); position: absolute; margin-left: -14px; color: var(--fg-3); }
+.mdx .md-quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--fg-2); }
+.mdx .md-code { margin: 6px 0; padding: 10px 12px; border-radius: 6px; background: var(--callout); font: .86em/1.5 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }
+.mdx code { padding: 0 4px; border-radius: 4px; background: var(--callout); font: .9em ui-monospace, Consolas, monospace; }
+.mdx .md-table { display: block; overflow-x: auto; border-collapse: collapse; margin: 6px 0; font-size: .93em; }
+.mdx .md-table th, .mdx .md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.mdx .md-table th { background: var(--callout); }
+.mdx .md-hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.mdx .md-front { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--callout); color: var(--fg-2); font: 12px/1.55 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+@media (max-width: 760px) { .tl.mdv { inset: 8px; } .mdv-list { width: 44%; } .mdv-doc { padding: 12px 14px 40px; } }
 .drawer .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .drawer .acts a, .drawer .acts button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--fg); font-size: .88em; font-weight: 600; text-decoration: none; cursor: pointer; }
 .drawer .acts a:hover, .drawer .acts button:hover { background: var(--hover); }
@@ -370,7 +421,27 @@ td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kb-sub { color: var(--fg-3); font-size: .85em; }
 .kb-sub b { color: var(--fg-2); font-weight: 500; }
 .kb-top .toolbar { flex: 1 1 340px; margin: 0; }
-.kb-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; padding: 20px 24px 60px; }
+/* 11-17: 「실행 중」은 대부분 비어 가운데가 텅 비었다 → 위쪽 띠로 올리고, 아래는 3열(할 일 많은 쪽을 넓게) */
+.kb-board { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .85fr); gap: 16px; align-items: start; padding: 14px 24px 60px; }
+.kb-runwrap { padding: 16px 24px 0; }
+.kb-col.kb-run { min-height: 0; padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.kb-col.kb-run .kb-head { padding: 4px 6px; flex: none; }
+.kb-col.kb-run .kb-list { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 360px; min-width: 0; }
+.kb-col.kb-run .kb-list:empty { display: none; }
+.kb-col.kb-run .empty { margin: 0; padding: 0; font-size: .85em; color: var(--fg-3); }
+.kb-col.kb-run .kb-card { width: 300px; max-width: 100%; margin: 4px 0; padding: 8px 10px; gap: 4px; }
+.kb-col.kb-run .kb-card .ttl { font-size: .93em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-col.kb-run .kb-card .arch-row { display: none; }
+.kb-col.kb-run .kb-card:hover .arch-row, .kb-col.kb-run .kb-card:focus-within .arch-row { display: flex; }
+/* 정리 후보: 대화를 안 읽은 오래된 세션이라 한 줄 목록(이름 · 마지막 활동). 버튼은 올리거나 누를 때만 */
+.kb-card.slim { padding: 7px 10px; gap: 2px; margin-bottom: 6px; }
+.kb-card.slim .slim-row { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.kb-card.slim .slim-row .ttl { flex: 1; min-width: 0; font-weight: 500; font-size: .92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-card.slim .slim-row .time { flex: none; font-size: .8em; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.kb-card.slim .live, .kb-card.slim .arch-row { display: none; }
+:root .kb-board .kb-card.slim { padding: 7px 10px; margin-bottom: 6px; }  /* 스킨의 카드 여백(--cd-pad, 뒤에 나오는 규칙)보다 구체적으로 */
+:root .kb-col.kb-run .kb-card { padding: 8px 10px; margin: 4px 0; }
+.kb-card.slim:hover .arch-row, .kb-card.slim:focus-within .arch-row { display: flex; }
 .kb-col { background: color-mix(in srgb, var(--fg) 4%, var(--bg)); border-radius: 12px; padding: 10px; min-height: 180px; }
 .kb-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 10px; font-weight: 600; }
 .kb-head .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--col); }
@@ -387,7 +458,7 @@ td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kb-col .empty { background: transparent; }
 .kb-foot { margin: 0; padding: 0 24px 40px; color: var(--fg-3); font-size: .85em; }
 @media (max-width: 1100px) { .kb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .kb-board { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 40px; } .kb-top { padding: 12px 14px; } }
+@media (max-width: 640px) { .kb-board { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 40px; } .kb-top { padding: 12px 14px; } .kb-runwrap { padding: 12px 12px 0; } }
 
 /* ══ 3-D. 레이아웃: 목록 list (한 줄 목록, 여백과 활자만) ══ */
 [data-layout="list"] { --font-head: "Noto Serif KR", "Nanum Myeongjo", "Batang", Georgia, serif; }
@@ -471,6 +542,21 @@ td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .drawer .askbox .ops button:hover { border-color: var(--accent); }
 .drawer .askbox .ops a.appans { padding: 4px 10px; border: 1px dashed var(--accent); border-radius: 6px; color: var(--fg); font-size: .85em; text-decoration: none; }
 .drawer .askbox .ops a.appans:hover { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.drawer .askbox .ops a.appans.opened { border-style: solid; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+.drawer .askbox .appnote { margin-top: 6px; }
+/* 상황판이 직접 돌리는 세션: 입력창 바로 위에 상태 · 허용 요청 · 선택지 질문 */
+.drawer .hostbox { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); font-size: .88em; max-height: 45vh; overflow: auto; }
+.drawer .hostbox .hhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drawer .hostbox .hstate { color: var(--fg-3); }
+.drawer .hostbox .hstate.on { color: var(--accent); }
+.drawer .hostbox .hreq { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.drawer .hostbox .hsum { max-height: 140px; overflow: auto; margin: 6px 0; padding: 6px 8px; background: var(--hover); border-radius: 6px; font-size: .85em; white-space: pre-wrap; word-break: break-all; }
+.drawer .hostbox .hops { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.drawer .hostbox button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); font-size: .95em; cursor: pointer; }
+.drawer .hostbox button.hok { border-color: var(--accent); }
+.drawer .hostbox button.on { background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-color: var(--accent); }
+.drawer .hostbox button:disabled { opacity: .6; cursor: default; }
+.drawer .hostbox .herr { color: var(--c-red); margin-top: 6px; }
 .due.over { background: var(--c-red); color: var(--on-red); }
 .tbar { flex: none; width: 44px; height: 5px; border-radius: 3px; background: var(--hover); overflow: hidden; }
 .tbar i { display: block; height: 100%; background: var(--accent); }
@@ -944,6 +1030,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <div class="box hidden" id="d-bg"></div>
     <h3>마지막 결과</h3>
     <div class="box" id="d-result"></div>
+    <h3>문서 <span class="h-note">이 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일 — 누르면 읽기</span></h3>
+    <div class="box docs" id="d-docs"><span class="nosum">불러오는 중…</span></div>
     <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label></span></h3>
     <div class="conv" id="d-conv"><span class="nosum">불러오는 중…</span></div>
     <h3>실시간</h3>
@@ -952,7 +1040,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <div class="box" id="d-links"><span class="nosum">주고받은 요청이 없어요</span></div>
     <div class="acts" id="d-acts"></div>
   </div>
-  <div class="df" id="d-chat"></div>
+  <div class="df" id="d-chat"><div class="hostbox hidden" id="d-host"></div></div>
 </aside>
 
 <!-- 세션 타임라인(요약 판 「🕒 세션 타임라인」): 세션마다 가로 줄, 활동 구간은 막대, 세션 간 메시지는 그 시각의 세로선 -->
@@ -970,6 +1058,26 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 <div class="tl hm-pop hidden" id="hmp" role="dialog" aria-label="활동 히트맵">
   <div class="tl-h"><b>🟩 활동 히트맵</b><span class="tl-legend">진할수록 출력 토큰이 많음 · 칸에 마우스를 올리면 수치 · 1분마다 갱신</span><button class="x" id="hmp-x" type="button" aria-label="닫기">✕</button></div>
   <div class="tl-b" id="ov-heat"></div>
+</div>
+
+<!-- 문서 보기(md 읽기 전용): 상세 창 「문서」 · 대화 속 md 경로 · 도구줄 「📄 문서」에서 연다. 감시 폴더 · 메모리 폴더 안의 .md 만 -->
+<div class="tl mdv hidden" id="mdv" role="dialog" aria-label="문서 보기">
+  <div class="tl-h">
+    <button class="lt" id="mdv-back" type="button" title="이전 문서로" disabled>←</button>
+    <button class="lt" id="mdv-listbtn" type="button" title="최근에 바뀐 md 파일 목록" aria-pressed="false">📂 목록</button>
+    <span class="mdv-name" id="mdv-name">📄 문서</span>
+    <span class="mdv-rel" id="mdv-rel"></span>
+    <span class="tl-legend" id="mdv-meta"></span>
+    <span class="mdv-acts"><label><input type="checkbox" id="mdv-raw"> 원문</label><button class="lt" id="mdv-copy" type="button" title="이 파일의 전체 경로를 복사">경로 복사</button></span>
+    <button class="x" id="mdv-x" type="button" aria-label="닫기">✕</button>
+  </div>
+  <div class="mdv-b">
+    <div class="mdv-list hidden" id="mdv-list">
+      <input type="search" id="mdv-q" placeholder="이름·경로로 거르기 · 경로를 넣고 Enter 면 바로 열기" autocomplete="off" aria-label="md 파일 거르기">
+      <div class="mdv-items" id="mdv-items"></div>
+    </div>
+    <div class="mdv-doc" id="mdv-doc"><div class="mdx" id="mdv-body"></div></div>
+  </div>
 </div>
 
 <!-- 채팅 입력. 관제 카드는 떠 있는 창으로, 세션 카드는 드로어 아래에 붙어서 열린다. 관제 세션이 그 세션에 작업자 메시지로 전달한다. -->
@@ -1124,6 +1232,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     const tb = (label, title, fn) => { const b = el('button', 'lt', label); b.type = 'button'; b.title = title; b.addEventListener('click', () => fn(b)); t.append(b); return b; };
     tb('🕒 타임라인', '세션마다 활동 구간과 세션 간 메시지를 시간축으로', () => openTimeline());
     tb('🟩 히트맵', '최근 7일 요일×시간 출력 토큰', () => toggleHeat());
+    tb('📄 문서', '감시 폴더 · 메모리 폴더의 md 파일을 최근 바뀐 순으로 보고 읽기(읽기 전용)', () => openDocs());
+    tb('＋ 새 세션', '세오가 감시 폴더에서 Claude Code 세션을 직접 시작해요. 답 · 허용 · 선택지를 상황판에서 바로 해요(트레이로 연 창 · Windows)', () => openNewSession());
     let pin = false; try { pin = localStorage.getItem('so-board-pin') === 'on'; } catch {}
     document.body.classList.toggle('pin-wait', pin);
     tb('📌 답 대기 고정', '칸반에서 내 답 대기 열이 스크롤해도 화면에 붙어 있게', (b) => togglePin(b)).setAttribute('aria-pressed', String(pin));
@@ -1149,6 +1259,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       node.dataset.sid = sid;
       node.title = '누르면 세션 상세(요약·채팅)가 열려요';
       // 링크·버튼을 누른 건 그대로 두고, 카드 바탕을 누르면 상세 드로어를 연다.
+      node.addEventListener('click', (e) => { if (e.target.closest('a, button, input, textarea')) return; openDrawer(r, node); });
+    } else if (r.cli) {  // 사이드바 id 없는 판정 전 카드(세오가 직접 시작한 세션 등): 대화 id 로 상세 창을 연다
+      node.dataset.cli = r.cli;
+      node.title = '누르면 상세 창(대화 · 직접 답하기)이 열려요';
       node.addEventListener('click', (e) => { if (e.target.closest('a, button, input, textarea')) return; openDrawer(r, node); });
     }
     // 모든 열의 카드에 숨기기·보관·삭제(눌러도 상세 창은 안 열림 — 버튼은 위 클릭 처리에서 제외).
@@ -1286,30 +1400,47 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     }
   };
 
-  // ── 레이아웃 kanban: 칸반(상태별 4열) ──
+  // ── 레이아웃 kanban: 칸반(위쪽 「지금 도는 중」 띠 + 아래 3열) ──
+  // 11-17 작업자: 실행 중 열이 대부분 비어 가운데가 텅 빔 → 실행 중은 띠로(없으면 한 줄), 내 답 대기를 가장 넓게, 정리 후보는 한 줄 목록
   const buildKanban = (app) => {
     app.innerHTML = `
       <header class="kb-top">
         <div class="brand">${LOGO}<div><div class="kb-title">Session Orchestrator</div><div class="kb-sub">판정 기준 <b class="judged"></b> · 관제 세션에서 /board 로 갱신 · 영업일 3일 넘게 조용하면 정리 후보</div></div></div>
         <div class="slot"></div>
       </header>
+      <div class="kb-runwrap"></div>
       <div class="kb-board groups"></div>
       <p class="kb-foot foot"></p>`;
     $('.judged', app).textContent = judged;
     $('.foot', app).textContent = FOOT;
     $('.slot', app).replaceWith(toolbar());
     for (const g of GROUPS) {
+      const run = g.key === 'running';
       const col = box(g, 'div'); col.classList.add('kb-col');
-      const head = el('div', 'kb-head'); head.append(el('i', 'dot'), txt(g.icon + ' ' + g.status), el('span', 'cnt'));
+      if (run) col.classList.add('kb-run');
+      const head = el('div', 'kb-head'); head.append(el('i', 'dot'), txt(g.icon + ' ' + (run ? '지금 도는 중' : g.status)), el('span', 'cnt'));
       const list = el('div', 'kb-list'); list.dataset.list = ''; list.dataset.wrap = '';
-      col.append(head, el('p', 'empty hidden', g.empty), list);
+      col.append(head, el('p', 'empty hidden', run ? '도는 세션 없음' : g.empty), list);
       sorted(g).forEach((r) => {
-        const c = el('article', 'kb-card');
+        const slim = g.key === 'cleanup';
+        const c = el('article', 'kb-card' + (slim ? ' slim' : ''));
         const meta = el('div', 'meta'); meta.append(tag(r.section));
         if (r.due) meta.append(dueEl(r));
         meta.append(el('span', 'time', lastOf(r)));
         const ttl = el('div', 'ttl ctitle'); ttl.append(sessionEl(r));  // 모든 열에서 세션 이름이 카드 제목(맨 위)
+        if (slim) {  // 정리 후보: 이름 · 마지막 활동 한 줄(할 일이 있으면 그 아래 한 줄)
+          const row = el('div', 'slim-row'); row.append(ttl, el('span', 'time', lastOf(r)));
+          c.append(row);
+          if (hasTodo(r)) c.append(el('div', 'sub', '☑ ' + r.todo));
+          mount(list, r, c);
+          return;
+        }
         c.append(ttl);
+        if (run) {  // 띠 안 카드: 이름 + 섹션 · 시각만(지금 하는 일은 실시간 줄이 붙인다)
+          c.append(meta);
+          mount(list, r, c);
+          return;
+        }
         if (g.key === 'waiting') {
           if (hasTodo(r)) c.append(el('div', 'todo-line', r.todo));
           c.append(el('div', 'sub', resOf(r)), meta);
@@ -1321,7 +1452,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         }
         mount(list, r, c);
       });
-      $('.groups', app).append(col);
+      $(run ? '.kb-runwrap' : '.groups', app).append(col);
     }
   };
 
@@ -1705,8 +1836,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     $$('.picked').forEach((n) => n.classList.remove('picked'));
     if (node) node.classList.add('picked');
     const isControl = r === control;
-    target = { session_id: node ? node.dataset.sid : sidOf(r), session: r.session, control: isControl };
-    if (!target.session_id) return;
+    target = { session_id: (node && node.dataset.sid) || sidOf(r), session: r.session, control: isControl };
+    if (!target.session_id && !(drawerCli && r.cli === drawerCli)) return;
     $('#c-title').textContent = r.session;
     $('#c-text').placeholder = isControl ? '예: 갱신  — 관제 세션이 깨어나 그대로 수행해요 (Ctrl+Enter)' : '이 세션에 보낼 말을 적고 Ctrl+Enter (관제 세션이 대신 전달해요)';
     $('#c-st').textContent = !linked ? '지금은 관제 세션이 대기 중이 아니라 처리가 밀려요.'
@@ -1714,7 +1845,173 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       : '관제 세션이 대신 전달해요. 그 세션에는 작업자 메시지로 들어가요.';
     $('#c-send').disabled = false;
     composer.classList.remove('hidden');
+    setComposerMode();
     $('#c-text').focus();
+  };
+  // ── 상황판이 직접 돌리는 세션(board_host, 3단계) ──
+  // 세오가 Claude Code CLI 를 직접 띄워 돌린다. 입력창 글 · 허용 · 선택지 답이 그 프로세스에 바로 들어가 「작업자 본인 입력」이 된다
+  // (관제를 거친 「다른 세션의 메시지」가 아니라 승인도 받아들여진다). 그래서 서버는 트레이가 연 창의 입력 열쇠 쿠키가 있어야 받는다.
+  // Claude 앱이 열고 있는 세션은 못 넘겨받는다(두 곳에서 이어 쓰면 대화가 갈라짐) → 그때는 예전처럼 관제가 전달, 승인은 앱에서.
+  let hostEnv = null;   // {paired: 이 창이 직접 보낼 수 있나, cli: CLI 설치, os}
+  let hostSt = null;    // 상세 창 세션의 /api/host/state
+  let hostTimer = null;
+  const hostSent = new Set();  // 답한 요청 id(다시 그려져도 두 번 안 보냄)
+  api('/api/host/paired').then((x) => { hostEnv = x; setComposerMode(); }).catch(() => {});
+  const hostKey = () => drawerSid ? 'sid=' + encodeURIComponent(drawerSid) : drawerCli ? 'cli=' + encodeURIComponent(drawerCli) : '';
+  const hostWhy = () => !hostEnv ? '' : hostEnv.os !== 'nt' ? '직접 돌리기는 아직 Windows 에서만 돼요'
+    : !hostEnv.cli ? 'Claude Code CLI(claude)가 없어 직접 돌릴 수 없어요'
+    : !hostEnv.paired ? '트레이 아이콘으로 연 창이 아니라 직접 보낼 수 없어요(트레이 아이콘을 눌러 연 창에서만)' : '';
+  const canDirect = () => !!(hostEnv && !hostWhy() && hostSt && !hostSt.app_holds);
+  function setComposerMode() {
+    if (!target || target.control || target.newSession) return;
+    target.direct = canDirect();
+    $('#c-text').placeholder = target.direct ? '이 세션에 바로 들어가요(작업자 본인 입력) · Ctrl+Enter' : '이 세션에 보낼 말을 적고 Ctrl+Enter (관제 세션이 대신 전달해요)';
+    const st = $('#c-st');
+    if (st.dataset.busy) return;
+    if (target.direct) st.textContent = hostSt && hostSt.alive ? '세오가 이 세션을 직접 돌리는 중이에요. 허용 · 선택지도 위 칸에서 바로 답해요.'
+      : '보내면 세오가 이 세션을 직접 이어 받아 돌려요. Claude 앱에서 이 세션을 열면 세오가 놓아요.';
+    else if (hostSt && hostSt.app_holds) st.textContent = 'Claude 앱이 이 세션을 열고 있어 관제 세션이 대신 전달해요. 승인은 앱에서 해요.';
+    else if (!target.session_id) st.textContent = hostWhy() || '직접 돌리기 상태를 확인하는 중…';
+    else st.textContent = (hostWhy() ? hostWhy() + ' — ' : '') + (linked ? '관제 세션이 대신 전달해요. 그 세션에는 작업자 메시지로 들어가요.' : '지금은 관제 세션이 대기 중이 아니라 처리가 밀려요.');
+    if (!target.session_id) $('#c-send').disabled = !target.direct;
+  }
+  const hostLoad = async () => {
+    const k = hostKey();
+    if (!k || drawer.classList.contains('hidden')) return;
+    try {
+      const s = await api('/api/host/state?' + k);
+      if (hostKey() !== k) return;
+      hostSt = s;
+    } catch { if (hostKey() === k) hostSt = null; }
+    paintHost(); setComposerMode();
+  };
+  const hostWatch = () => {
+    clearInterval(hostTimer); hostSt = null; paintHost();
+    hostLoad(); hostTimer = setInterval(hostLoad, 2500);
+  };
+  const hostAnswer = async (rid, behavior, answers, btns, note) => {
+    if (hostSent.has(rid) || !hostSt) return;
+    hostSent.add(rid);
+    btns.forEach((b) => { b.disabled = true; });
+    note.textContent = '보내는 중…';
+    try {
+      await api('/api/host/answer', { cli: hostSt.cli, request_id: rid, behavior, answers: answers || null });
+      note.textContent = behavior === 'allow' ? (answers ? '답함 ✓' : '허용함 ✓') : '거부함 ✓';
+      setTimeout(hostLoad, 400);
+    } catch (e) { hostSent.delete(rid); btns.forEach((b) => { b.disabled = false; }); note.textContent = '실패: ' + e.message; }
+  };
+  const paintHost = () => {
+    const box = $('#d-host');
+    if (!box) return;
+    const s = hostSt;
+    const show = !!(s && (s.alive || (s.pending && s.pending.length) || s.released));
+    box.classList.toggle('hidden', !show);
+    const sig = JSON.stringify(s && show ? [s.alive, s.busy, s.error, s.mode, s.released, (s.pending || []).map((p) => p.request_id)] : null);
+    if (box.dataset.sig === sig) return;
+    box.dataset.sig = sig;
+    box.innerHTML = '';
+    if (!show) return;
+    const pend = s.pending || [];
+    const head = el('div', 'hhead');
+    head.append(el('b', '', '🖥 세오가 직접 돌리는 세션'),
+      el('span', 'hstate' + (s.busy || pend.length ? ' on' : ''), !s.alive ? (s.released ? 'Claude 앱에서 열어서 세오가 놓았어요' : '꺼짐 — 보내면 다시 이어 받아요') : pend.length ? '작업자 답 기다림' : s.busy ? '답하는 중…' : '쉬는 중'));
+    if (s.alive && s.mode) head.append(el('span', 'nosum', '권한 모드 ' + s.mode));
+    if (s.alive && s.busy) {
+      const b = el('button', '', '⏹ 멈추기'); b.type = 'button';
+      b.addEventListener('click', async () => { b.disabled = true; try { await api('/api/host/stop', { cli: s.cli }); } catch (e) { b.textContent = '실패: ' + e.message; } setTimeout(hostLoad, 500); });
+      head.append(b);
+    }
+    box.append(head);
+    if (s.error) box.append(el('div', 'herr', '⚠ ' + s.error));
+    for (const p of pend) {
+      const it = el('div', 'hreq');
+      const note = el('span', 'nosum');
+      if (p.kind === 'tool') {
+        it.append(el('b', '', '허용할까요? ' + p.tool));
+        const pre = el('pre', 'hsum'); pre.textContent = p.summary || ''; it.append(pre);
+        const ok = el('button', 'hok', '허용'); ok.type = 'button';
+        const no = el('button', '', '거부'); no.type = 'button';
+        ok.addEventListener('click', () => hostAnswer(p.request_id, 'allow', null, [ok, no], note));
+        no.addEventListener('click', () => hostAnswer(p.request_id, 'deny', null, [ok, no], note));
+        const row = el('div', 'hops'); row.append(ok, no, note); it.append(row);
+      } else {  // AskUserQuestion: 질문마다 선택지. 질문 하나 · 하나 고르기면 누르는 즉시 보낸다
+        const qs = p.questions || [];
+        const single = qs.length === 1 && !qs[0].multiSelect;
+        const picks = {};
+        const btns = [];
+        qs.forEach((q) => {
+          it.append(el('b', '', '❓ ' + (q.question || '')));
+          const ops = el('div', 'hops');
+          (q.options || []).forEach((o) => {
+            const lab = typeof o === 'string' ? o : (o.label || '');
+            const b = el('button', '', lab); b.type = 'button';
+            if (o && o.description) b.title = o.description;
+            btns.push(b);
+            b.addEventListener('click', () => {
+              if (q.multiSelect) {
+                const cur = new Set((picks[q.question] || '').split(', ').filter(Boolean));
+                if (cur.has(lab)) cur.delete(lab); else cur.add(lab);
+                picks[q.question] = [...cur].join(', ');
+                b.classList.toggle('on', cur.has(lab));
+              } else {
+                picks[q.question] = lab;
+                ops.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+              }
+              if (single) hostAnswer(p.request_id, 'allow', picks, btns, note);
+            });
+            ops.append(b);
+          });
+          it.append(ops);
+        });
+        const row = el('div', 'hops');
+        if (!single) {
+          const send = el('button', 'hok', '답 보내기'); send.type = 'button'; btns.push(send);
+          send.addEventListener('click', () => {
+            if (qs.every((q) => picks[q.question])) hostAnswer(p.request_id, 'allow', picks, btns, note);
+            else note.textContent = '질문마다 하나 이상 골라 주세요';
+          });
+          row.append(send);
+        }
+        const no = el('button', '', '답하지 않기'); no.type = 'button'; btns.push(no);
+        no.addEventListener('click', () => hostAnswer(p.request_id, 'deny', null, btns, note));
+        row.append(no, note); it.append(row);
+      }
+      box.append(it);
+    }
+  };
+  // 새 세션: 감시 폴더에서 CLI 세션을 시작한다. 대화 파일이 생기면 「판정 전」 카드로 뜨고, 그 카드 상세 창을 연다
+  const openNewSession = () => {
+    closeDrawer();
+    $$('.picked').forEach((n) => n.classList.remove('picked'));
+    target = { newSession: true, session: '새 세션' };
+    $('#c-title').textContent = '새 세션 (감시 폴더에서 시작)';
+    $('#c-text').placeholder = '새 세션에 줄 첫 말 · Ctrl+Enter';
+    const why = hostWhy();
+    $('#c-st').textContent = why || (hostEnv ? '세오가 Claude Code 세션을 직접 띄워요. 답 · 허용 · 선택지는 그 카드 상세 창에서 바로 해요.' : '직접 돌리기 상태를 확인하는 중…');
+    $('#c-send').disabled = !!why;
+    composer.classList.remove('hidden');
+    $('#c-text').focus();
+  };
+  const openWhenCard = (cli, tries = 40) => {  // 새 세션 카드가 생기면 상세 창을 연다(최대 40초)
+    const r = rows.find((x) => x.synthetic && x.cli === cli);
+    const node = items.find((n) => n.dataset.cli === cli);
+    if (r && node) { openDrawer(r, node); return; }
+    if (tries > 0) setTimeout(() => openWhenCard(cli, tries - 1), 1000);
+  };
+  const sendDirect = async (text) => {
+    const st = $('#c-st'), btn = $('#c-send');
+    const isNew = target.newSession;
+    btn.disabled = true; st.dataset.busy = '1'; st.textContent = isNew ? '새 세션을 띄우는 중…' : '보내는 중…';
+    try {
+      const body = isNew ? { new: true, text } : drawerSid ? { sid: drawerSid, text } : { cli: drawerCli, text };
+      const r = await api('/api/host/send', body);
+      $('#c-text').value = '';
+      // 입력창이 떠 있으면 카드 다시 그리기를 미뤄서(busy) 새 카드가 안 생긴다 → 닫고, 카드가 뜨면 상세 창을 연다
+      if (isNew) { delete st.dataset.busy; btn.disabled = false; closeComposer(); openWhenCard(r.cli); return; }
+      else { st.textContent = '보냄 ✓ 세션이 답하는 중…'; setTimeout(hostLoad, 600); }
+    } catch (e) { st.textContent = '보내지 못했어요: ' + e.message; }
+    delete st.dataset.busy;
+    btn.disabled = false;
   };
   // ── 숨기기(상황판만) / 삭제(영구, Claude 앱 승인 카드) ──
   const hideSessions = (list) => {
@@ -1788,11 +2085,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   };
 
   const sentAsk = new Map();  // "세션 id|질문" → 보낸 선택지(드로어의 질문 선택지 버튼)
+  const openedAsk = new Map();  // "세션 id|질문" → 앱에서 열려고 누른 승인 선택지(누른 뒤 아무 변화가 없어 보였다, 11-17)
   // 승인으로 보이는 선택지: 다른 세션을 거쳐 보내면 받는 세션이 승인으로 치지 않는다(안전 규칙) → 앱에서 직접 답하게 링크로
   const APPROVAL_RE = /커밋|commit|푸시|push|병합|merge|\bPR\b|삭제|delete|지워|보내|발송|send|등록|게시|publish|승인|approve|배포|deploy|결제|구매/i;
   const sendMessage = async () => {
     const text = $('#c-text').value.trim();
     if (!target || !text) return;
+    if (target.direct || target.newSession) return sendDirect(text);  // 세오가 직접 돌리는 세션: 관제를 거치지 않는다
     const st = $('#c-st'), btn = $('#c-send');
     btn.disabled = true; st.textContent = '보내는 중…';
     try {
@@ -1821,28 +2120,56 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const KST = (ts) => { const d = new Date(ts); return isNaN(d) ? null : d; };
   // 가벼운 마크다운(앱 대화창처럼 읽히게): 코드 블록 · 표 · 목록 · 제목 · 인용과 줄 안의 **굵게** · `코드` · [글](링크).
   // innerHTML 을 쓰지 않고 요소를 만들어 글은 textContent 로만 넣는다
+  // md 파일 경로([글](경로.md) · `경로.md` · [[메모리 이름]])는 누르면 문서 보기 창으로 연다(11-17).
+  // MDCTX = 지금 그리는 글의 문맥 {sid: 세션, base: 문서 폴더} — 상대 경로를 서버가 그 기준으로 찾는다. null 이면 링크로 만들지 않는다
+  let MDCTX = null;
+  const MD_PATH = /\.(md|markdown)(#[^\s)]*|:\d+(:\d+)?)?$/i;
+  const mdLink = (label, ref, ctx, tag = 'a') => {
+    const a = el(tag, 'md-link', label);
+    a.title = (ref.wiki ? '[[' + ref.wiki + ']]' : ref.path) + ' — 눌러서 문서 보기';
+    if (tag === 'a') a.href = '#';
+    a.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openDoc(ref, ctx); });
+    return a;
+  };
   const mdInline = (s, into) => {
-    const re = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))/g;
+    const re = /(\[\[[^\]\n]+\]\]|\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))/g;
     let i = 0, m;
     while ((m = re.exec(s))) {
       if (m.index > i) into.append(txt(s.slice(i, m.index)));
       const t = m[0];
-      if (t.startsWith('**')) into.append(el('b', '', t.slice(2, -2)));
-      else if (t.startsWith('`')) into.append(el('code', '', t.slice(1, -1)));
-      else {
+      if (t.startsWith('[[')) {
+        const name = t.slice(2, -2);
+        into.append(MDCTX ? mdLink(name.split('|').pop(), { wiki: name }, MDCTX) : txt(t));
+      } else if (t.startsWith('**')) into.append(el('b', '', t.slice(2, -2)));
+      else if (t.startsWith('`')) {
+        const c = t.slice(1, -1);
+        into.append(MDCTX && MD_PATH.test(c) && !/\s/.test(c) ? mdLink(c, { path: c }, MDCTX, 'code') : el('code', '', c));
+      } else {
         const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(t);
         if (lm && /^(https?:|claude:)/.test(lm[2])) { const a = el('a', '', lm[1]); a.href = lm[2]; a.target = '_blank'; a.rel = 'noopener'; into.append(a); }
+        else if (lm && MDCTX && MD_PATH.test(lm[2])) into.append(mdLink(lm[1], { path: decodeURIComponent(lm[2]) }, MDCTX));
         else into.append(txt(lm ? lm[1] : t));
       }
       i = m.index + t.length;
     }
     if (i < s.length) into.append(txt(s.slice(i)));
   };
-  const mdBlock = (text) => {
+  // opts.doc = 문서 보기(맨 위 --- 속성 블록 · 제목 단계 · 가로줄 · 체크박스까지). 대화 말풍선은 예전 그대로 가볍게
+  const mdBlock = (text, ctx = null, opts = {}) => {
+    const prev = MDCTX; MDCTX = ctx;
+    try { return mdBlockInner(text, opts); } finally { MDCTX = prev; }
+  };
+  const mdBlockInner = (text, opts) => {
     const root = document.createDocumentFragment();
     const lines = String(text).split('\n');
-    for (let i = 0; i < lines.length;) {
+    let start = 0;
+    if (opts.doc && /^---\s*$/.test(lines[0] || '')) {  // 맨 위 속성(frontmatter)
+      const end = lines.findIndex((l, k) => k > 0 && /^---\s*$/.test(l));
+      if (end > 0) { root.append(el('div', 'md-front', lines.slice(1, end).join('\n'))); start = end + 1; }
+    }
+    for (let i = start; i < lines.length;) {
       const ln = lines[i];
+      if (opts.doc && /^\s*([-*_])(\s*\1){2,}\s*$/.test(ln)) { root.append(el('hr', 'md-hr')); i++; continue; }
       if (/^\s*```/.test(ln)) {  // 코드 블록
         const buf = []; i++;
         while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
@@ -1864,12 +2191,15 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
           const mm = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(lines[i++]);
           const li = el('div', 'md-li'); li.style.paddingLeft = (Math.min(mm[1].length, 8) * 7 + 12) + 'px';
-          li.dataset.mark = /\d/.test(mm[2]) ? mm[2] : '•'; mdInline(mm[3], li); ul.append(li);
+          let body = mm[3], mark = /\d/.test(mm[2]) ? mm[2] : '•';
+          const cb = opts.doc && /^\[([ xX])\]\s+/.exec(body);
+          if (cb) { mark = cb[1] === ' ' ? '☐' : '☑'; body = body.slice(cb[0].length); }
+          li.dataset.mark = mark; mdInline(body, li); ul.append(li);
         }
         root.append(ul); continue;
       }
-      const hm = /^(#{1,4})\s+(.*)$/.exec(ln);
-      if (hm) { const h = el('div', 'md-h'); mdInline(hm[2], h); root.append(h); i++; continue; }
+      const hm = /^(#{1,6})\s+(.*)$/.exec(ln);
+      if (hm) { const h = el('div', 'md-h md-h' + Math.min(hm[1].length, 4)); mdInline(hm[2].replace(/\s+#+\s*$/, ''), h); root.append(h); i++; continue; }
       if (/^\s*>\s?/.test(ln)) { const q = el('div', 'md-quote'); mdInline(ln.replace(/^\s*>\s?/, ''), q); root.append(q); i++; continue; }
       if (!ln.trim()) { root.append(el('div', 'md-gap')); i++; continue; }
       const p = el('div', 'md-p'); mdInline(ln, p); root.append(p); i++;
@@ -1878,7 +2208,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   };
   const msgEl = (it) => {
     const d = el('div', 'msg ' + (it.k === 'text' ? it.r : it.k) + (it.err ? ' err' : ''));
-    if (it.k === 'text' && it.r === 'assistant') d.append(mdBlock(it.t));
+    if (it.k === 'text' && it.r === 'assistant') d.append(mdBlock(it.t, { sid: conv.sid }));
+    else if (it.k === 'tool' && /^(Write|Edit|MultiEdit|Read)$/.test(it.n || '') && MD_PATH.test(it.t)) d.append(el('b', '', '🔧 ' + it.n + ' '), mdLink(it.t, { path: it.t }, { sid: conv.sid }));
     else if (it.k === 'tool') d.append(el('b', '', '🔧 ' + (it.n || '') + ' '), txt(it.t));
     else if (it.k === 'notice') { d.textContent = '🔔 ' + it.t.replace(/\s+/g, ' ').slice(0, 240); d.title = it.t.slice(0, 3000); }
     else if (it.k === 'relay') { d.textContent = '📨 다른 세션의 메시지 · ' + it.t.replace(/\s+/g, ' ').slice(0, 240); d.title = it.t.slice(0, 3000); }
@@ -1893,7 +2224,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (day === conv.lastDay) return null;
     conv.lastDay = day; return el('div', 'day', '— ' + day + ' —');
   };
-  const convUrl = (q) => API + '/api/transcript?t=' + encodeURIComponent(TOKEN) + '&sid=' + encodeURIComponent(conv.sid) + q;
+  const convUrl = (q) => API + '/api/transcript?t=' + encodeURIComponent(TOKEN)
+    + (conv.sid.startsWith('cli:') ? '&cli=' + encodeURIComponent(conv.sid.slice(4)) : '&sid=' + encodeURIComponent(conv.sid)) + q;
   const convLoad = async (sid) => {
     clearInterval(conv.timer);
     Object.assign(conv, { sid, start: 0, end: 0, busy: false, lastDay: '' });
@@ -1946,11 +2278,152 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   };
   $('#d-conv-res').addEventListener('change', (e) => convBox().classList.toggle('show-res', e.target.checked));
   $('#d-conv-note').addEventListener('change', (e) => convBox().classList.toggle('show-note', e.target.checked));
+
+  // ── 문서 보기(md 읽기 전용, 11-17): 세션들이 남기는 노트 · 초안 · 인계 문서 · 메모리를 상황판에서 바로 읽는다.
+  //    서버(/api/doc)는 감시 폴더 · 메모리 폴더 안의 .md 만 내준다. 열어 둔 동안 4초마다 바뀌었는지 보고 다시 그린다(보던 자리 유지)
+  const mdv = { cur: null, ctx: {}, hist: [], timer: null, busy: false, list: null };
+  const docUrl = (q) => API + '/api/doc' + q + (q.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(TOKEN);
+  const getJSON = (u) => fetch(u).then(async (x) => {
+    const j = await x.json().catch(() => ({}));
+    if (!x.ok) throw new Error(j.error || 'HTTP ' + x.status);
+    return j;
+  });
+  const fmtWhen = (sec) => new Date(sec * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmtSize = (n) => n < 1024 ? n + 'B' : n < 1048576 ? (n / 1024).toFixed(1) + 'KB' : (n / 1048576).toFixed(1) + 'MB';
+  const docQuery = (ref, ctx = {}) => {
+    const p = new URLSearchParams();
+    if (ref.wiki) p.set('wiki', ref.wiki); else p.set('path', ref.path);
+    if (ctx.sid && ctx.sid.startsWith('local_')) p.set('sid', ctx.sid);
+    if (ctx.base) p.set('base', ctx.base);
+    return '?' + p.toString();
+  };
+  const docNote = (msg) => { const b = $('#mdv-body'); b.textContent = ''; b.append(el('span', 'nosum', msg)); };
+  const paintDoc = (d, keepScroll) => {
+    const box = $('#mdv-doc'), body = $('#mdv-body'), top = box.scrollTop;
+    $('#mdv-name').textContent = '📄 ' + d.name;
+    $('#mdv-rel').textContent = d.rel;
+    $('#mdv-meta').textContent = fmtWhen(d.mtime) + ' 수정 · ' + fmtSize(d.size) + (d.truncated ? ' · 앞 2MB만' : '');
+    body.textContent = '';
+    if ($('#mdv-raw').checked) body.append(el('pre', 'raw', d.text));
+    else body.append(mdBlock(d.text, { sid: mdv.ctx.sid || '', base: d.dir }, { doc: true }));
+    box.scrollTop = keepScroll ? top : 0;
+    $$('#mdv-items button').forEach((b) => b.classList.toggle('on', b.dataset.path === d.path));
+  };
+  async function openDoc(ref, ctx = {}, opts = {}) {
+    $('#mdv').classList.remove('hidden');
+    $('#mdv-name').textContent = '📄 ' + (ref.wiki || String(ref.path || '').split(/[\\/]/).pop());
+    $('#mdv-rel').textContent = ''; $('#mdv-meta').textContent = '';
+    docNote('불러오는 중…');
+    try {
+      const d = await getJSON(docUrl(docQuery(ref, ctx)));
+      if (mdv.cur && !opts.back && mdv.cur.path !== d.path) mdv.hist.push({ ref: { path: mdv.cur.path }, ctx: mdv.ctx });
+      mdv.cur = d; mdv.ctx = ctx || {};
+      paintDoc(d);
+      clearInterval(mdv.timer); mdv.timer = setInterval(docTail, 4000);
+    } catch (e) {
+      docNote(/fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message + (ref.path ? ' — ' + ref.path : ''));
+    }
+    $('#mdv-back').disabled = !mdv.hist.length;
+  }
+  async function openDocs() {  // 도구줄 「📄 문서」: 목록을 펴고, 보던 문서가 없으면 안내
+    $('#mdv').classList.remove('hidden');
+    await toggleDocList(true, true);
+    if (!mdv.cur) { $('#mdv-name').textContent = '📄 문서'; docNote('왼쪽 목록에서 고르세요. 감시 폴더와 메모리 폴더의 md 파일을 최근 바뀐 순으로 보여 줘요.'); }
+    $('#mdv-q').focus();
+  }
+  const docTail = async () => {
+    if (mdv.busy || !mdv.cur || $('#mdv').classList.contains('hidden')) return;
+    mdv.busy = true;
+    try {
+      const r = await getJSON(docUrl(docQuery({ path: mdv.cur.path }) + '&ver=' + encodeURIComponent(mdv.cur.ver)));
+      if (!r.unchanged && r.path === mdv.cur.path) { mdv.cur = r; paintDoc(r, true); }
+    } catch {}
+    mdv.busy = false;
+  };
+  const closeDoc = () => {
+    $('#mdv').classList.add('hidden');
+    clearInterval(mdv.timer);
+    Object.assign(mdv, { cur: null, ctx: {}, hist: [] });
+  };
+  async function toggleDocList(show, reload) {
+    const lst = $('#mdv-list');
+    const on = show === undefined ? lst.classList.contains('hidden') : show;
+    lst.classList.toggle('hidden', !on);
+    $('#mdv-listbtn').setAttribute('aria-pressed', String(on));
+    if (on && (reload || !mdv.list)) {
+      const items = $('#mdv-items'); items.textContent = ''; items.append(el('span', 'nosum', '불러오는 중…'));
+      try { mdv.list = await getJSON(docUrl('/recent')); }
+      catch (e) { items.textContent = ''; items.append(el('span', 'nosum', /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message)); return; }
+    }
+    if (on) paintDocList();
+  }
+  const paintDocList = () => {
+    const items = $('#mdv-items'); items.textContent = '';
+    const q = $('#mdv-q').value.trim().toLowerCase();
+    const list = (mdv.list && mdv.list.items || []).filter((it) => !q || (it.rel + ' ' + it.name).toLowerCase().includes(q));
+    for (const it of list) {
+      const b = el('button'); b.type = 'button'; b.dataset.path = it.path; b.title = it.path;
+      b.append(txt((it.memory ? '🧠 ' : '') + it.name), el('span', 'p', it.rel + ' · ' + fmtWhen(it.mtime)));
+      if (mdv.cur && mdv.cur.path === it.path) b.classList.add('on');
+      b.addEventListener('click', () => openDoc({ path: it.path }, {}));
+      items.append(b);
+    }
+    if (!list.length) items.append(el('span', 'nosum', q ? '맞는 파일이 없어요 — 경로를 넣고 Enter 면 바로 열어요' : 'md 파일이 없어요'));
+    if (mdv.list && mdv.list.partial) items.append(el('span', 'note', '폴더가 커서 일부만 훑었어요(최근 바뀐 것 위주). 경로를 넣고 Enter 로 직접 열 수 있어요.'));
+  };
+  $('#mdv-x').addEventListener('click', closeDoc);
+  $('#mdv-back').addEventListener('click', () => { const p = mdv.hist.pop(); if (p) openDoc(p.ref, p.ctx, { back: true }); });
+  $('#mdv-listbtn').addEventListener('click', () => toggleDocList());
+  $('#mdv-raw').addEventListener('change', () => { if (mdv.cur) paintDoc(mdv.cur, true); });
+  $('#mdv-copy').addEventListener('click', async (e) => {
+    if (!mdv.cur) return;
+    const b = e.currentTarget;
+    try { await navigator.clipboard.writeText(mdv.cur.path); b.textContent = '복사됨 ✓'; } catch { b.textContent = '복사 실패'; }
+    setTimeout(() => { b.textContent = '경로 복사'; }, 1500);
+  });
+  $('#mdv-q').addEventListener('input', paintDocList);
+  $('#mdv-q').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const v = e.target.value.trim();
+    if (/[\\/]/.test(v) || MD_PATH.test(v)) openDoc({ path: v }, mdv.ctx);
+    else { const first = $('#mdv-items button'); if (first) first.click(); }
+  });
+  // Esc 는 문서 창부터 닫는다(상세 창 · 입력창은 그대로)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#mdv').classList.contains('hidden')) { e.stopImmediatePropagation(); closeDoc(); }
+  }, true);
+  // 상세 창 「문서」: 이 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일(대화 파일 끝부분 기준, 지금 있는 파일만)
+  const DOC_OP = { '작성': 'w', '수정': 'e', '읽음': 'r', '언급': 'm' };
+  const docsLoad = async (sid) => {
+    const box = $('#d-docs'); box.textContent = ''; box.append(el('span', 'nosum', '불러오는 중…'));
+    try {
+      const r = await getJSON(docUrl('/list?sid=' + encodeURIComponent(sid)));
+      if (drawerSid !== sid) return;
+      box.textContent = '';
+      if (!r.items.length) { box.append(el('span', 'nosum', '이 세션 대화(최근 부분)에 나온 md 파일이 없어요')); return; }
+      r.items.forEach((it, i) => {
+        const row = el('div', 'doc-row' + (i >= 8 ? ' hidden' : ''));
+        it.ops.forEach((o) => row.append(el('span', 'op ' + (DOC_OP[o] || ''), o)));
+        const a = mdLink(it.rel, { path: it.path }, { sid }); a.title = it.path + ' — 눌러서 문서 보기';
+        row.append(a, el('span', 'tm', fmtWhen(it.mtime)));
+        box.append(row);
+      });
+      if (r.items.length > 8) {
+        const b = el('button', 'more', '＋ ' + (r.items.length - 8) + '개 더 보기'); b.type = 'button';
+        b.addEventListener('click', () => { $$('.doc-row.hidden', box).forEach((x) => x.classList.remove('hidden')); b.remove(); });
+        box.append(b);
+      }
+    } catch (e) {
+      if (drawerSid !== sid) return;
+      box.textContent = ''; box.append(el('span', 'nosum', /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message));
+    }
+  };
   const closeDrawer = () => {
     if (drawer.classList.contains('hidden')) return;
     drawer.classList.add('hidden');
     clearInterval(conv.timer); conv.sid = '';
-    drawerSid = '';
+    drawerSid = ''; drawerCli = '';
+    clearInterval(hostTimer); hostSt = null; paintHost();
     setTimeout(() => { markRelated(); drawArrows(); }, 0);
     document.body.classList.remove('drawer-open');
     composer.classList.remove('docked');
@@ -1964,7 +2437,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   let resizedAt = 0;
   document.addEventListener('click', (e) => {
     if (drawer.classList.contains('hidden') || drawer.contains(e.target) || Date.now() - resizedAt < 400) return;
-    if (e.target.closest('[data-list] > [data-sid], #sheet, #gear, .tl, #composer')) return;
+    if (e.target.closest('[data-list] > [data-sid], [data-list] > [data-cli], #sheet, #gear, .tl, #composer')) return;
     closeDrawer();
   });
   // 상세 창 너비: 왼쪽 가장자리를 끌어 바꾸고 이 브라우저에 기억. 두 번 누르면 기본(580px)
@@ -1996,8 +2469,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const openDrawer = (r, node) => {
     const sid = sidOf(r);
     drawerSid = sid;
+    drawerCli = sid ? '' : (r.cli || '');
+    hostSt = null;  // 앞 카드의 직접 돌리기 상태가 입력창 안내에 남지 않게
+    const ckey = sid || (drawerCli ? 'cli:' + drawerCli : '');  // 대화 · 문서를 불러올 열쇠
     $('#d-sec').textContent = r.section;
-    $('#d-key').textContent = sid.slice(6, 14);
+    $('#d-key').textContent = sid ? sid.slice(6, 14) : drawerCli.slice(0, 8);
     $('#d-title').textContent = r.session;
     const st = $('#d-st'); st.textContent = r.status; st.style.setProperty('--col', STATUS_COL[r.status] || 'var(--fg-3)');
     const props = $('#d-props'); props.innerHTML = '';
@@ -2012,7 +2488,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (r.summary && r.summary.length) {
       const ul = el('ul', 'sum'); r.summary.forEach((s) => ul.append(el('li', '', s))); sum.append(ul);
     } else {
-      sum.append(el('div', 'nosum', r.status === '정리 후보' ? '정리 후보는 판정 때 대화를 읽지 않아 요약이 없어요. 아래 「요약 만들기」를 누르면 관제 세션이 읽고 채워요.' : '아직 요약이 없어요. 「요약 만들기」를 누르면 관제 세션이 대화를 읽고 채워요.'));
+      sum.append(el('div', 'nosum', !sid ? '사이드바 세션이 아니라(세오가 직접 시작한 세션 등) 관제 요약이 없어요. 아래 「대화」에서 전체를 볼 수 있어요.' : r.status === '정리 후보' ?'정리 후보는 판정 때 대화를 읽지 않아 요약이 없어요. 아래 「요약 만들기」를 누르면 관제 세션이 읽고 채워요.' : '아직 요약이 없어요. 「요약 만들기」를 누르면 관제 세션이 대화를 읽고 채워요.'));
     }
     const res = $('#d-result'); res.textContent = '';
     if (r.stale && r.stale.text) {
@@ -2035,7 +2511,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       sb.disabled = false;
     };
     sb.addEventListener('click', rejudge);
-    acts.append(sb);
+    if (sid) acts.append(sb);  // 사이드바 세션이 아니면(세오가 직접 시작한 세션) 관제가 요약할 길이 없다
     // 판정 뒤에 더 움직인 세션: 띠로 알리고, 턴이 끝나 있으면 열자마자 다시 판정을 맡긴다(같은 움직임에는 한 번만 — 새로고침해도 다시 안 보냄).
     // 도는 중이면 끝난 뒤 열 때 맡긴다(도는 동안은 판정해도 금방 또 낡음)
     banner.classList.toggle('hidden', !r.stale);
@@ -2053,7 +2529,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         rejudge();
       }
     }
-    {
+    if (sid) {
       const hb = el('button', '', '🙈 숨기기'); hb.type = 'button'; hb.addEventListener('click', () => hideSessions([r])); acts.append(hb);
       const ab = el('button', '', '🗄 보관'); ab.type = 'button'; ab.addEventListener('click', () => archive([r])); acts.append(ab);
       const db = el('button', 'del', '🗑 삭제'); db.type = 'button'; db.addEventListener('click', () => removeSessions([r])); acts.append(db);
@@ -2065,10 +2541,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     openComposer(r, node);
     drawer.classList.remove('hidden');
     document.body.classList.add('drawer-open');
-    history.replaceState(null, '', '#s=' + sid);
+    if (sid) history.replaceState(null, '', '#s=' + sid);
     paintDrawerLive();
     paintDrawerLinks();
-    if (conv.sid !== sid) convLoad(sid);
+    if (conv.sid !== ckey) convLoad(ckey);
+    if (sid) docsLoad(sid); else { const dd = $('#d-docs'); dd.textContent = ''; dd.append(el('span', 'nosum', '세오가 직접 시작한 세션은 문서 목록을 아직 안 모아요')); }
+    hostWatch();
     markRelated(); drawArrows();
   };
   $('#d-x').addEventListener('click', closeDrawer);
@@ -2084,6 +2562,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   // ── ① 실시간 층: board-server 의 /api/stream(SSE) 을 받아 카드에 상태·도구·토큰을 칠하고,
   //    도는 세션은 「실행 중」 열로, 판정 때 실행 중이었는데 턴이 끝난 세션은 「완료」로 옮긴다(분류는 다음 판정 때 LLM 이 다시).
   let drawerSid = '';
+  let drawerCli = '';  // 사이드바 id 없는 카드(세오가 직접 시작한 새 세션 등)는 대화 id 로 연다
   let liveData = null, pendingRender = false, liveFailed = false;
   rows.forEach((r) => { r.judged = r.status; });
   const fmtTok = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n || 0);
@@ -2186,13 +2665,15 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   };
   const paintDrawerLive = () => {
     const box = $('#d-live');
-    if (!box || !drawerSid) return;
-    const e = liveData && liveData.sessions && liveData.sessions[drawerSid];
+    if (!box || (!drawerSid && !drawerCli)) return;
+    const e = drawerSid ? liveData && liveData.sessions && liveData.sessions[drawerSid]
+      : liveData && (liveData.unmapped || []).find((u) => u.cli === drawerCli);
     paintDrawerBg(e);
     // 보이는 값이 그대로면 다시 그리지 않는다. 다른 세션이 움직일 때마다(2초쯤) 이 칸을 통째로 다시 그려
     // 선택지 버튼·「↗」 링크가 누르는 도중 바뀌어 클릭이 사라졌다
     const sig = JSON.stringify(e ? [drawerSid, e.state, e.label, e.last, e.text, e.model, e.today && e.today.output_tokens, e.today && sumIn(e.today),
-      e.tokens && e.tokens.output_tokens, e.tokens && sumIn(e.tokens), e.ask || null, e.ask ? sentAsk.get(drawerSid + '|' + e.ask.text) || '' : '']
+      e.tokens && e.tokens.output_tokens, e.tokens && sumIn(e.tokens), e.ask || null, e.ask ? sentAsk.get(drawerSid + '|' + e.ask.text) || '' : '',
+      e.ask ? openedAsk.get(drawerSid + '|' + e.ask.text) || '' : '']
       : [drawerSid, !!liveData]);
     if (box.dataset.sig === sig) return;
     box.dataset.sig = sig;
@@ -2215,16 +2696,23 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       a.append(el('b', '', '❓ ' + e.ask.text));
       if (e.ask.kind === 'text') a.append(el('div', 'nosum', e.ask.weak ? '마지막 문장으로 추정한 질문이에요(앱 판정이 없어 열은 옮기지 않았어요)' : '마지막 문장으로 추정했고, Claude 앱도 확인이 필요하다고 판정했어요'));
       if (e.ask.kind === 'app') a.append(el('div', 'nosum', 'Claude 앱이 이 턴을 「작업자 확인 필요」로 판정했어요. 위 글은 앱이 적은 할 일이에요'));
+      if (e.ask.kind === 'host') a.append(el('div', 'nosum', '세오가 직접 돌리는 세션이에요. 아래 입력창 위 칸에서 바로 답해요'));
       if (e.ask.options && e.ask.options.length) {
         const ops = el('div', 'ops');
         const key = drawerSid + '|' + e.ask.text;
         const sent = sentAsk.get(key);  // 실시간 갱신으로 다시 그려져도 두 번 보내지 않게
+        const opened = openedAsk.get(key);
+        let appOps = 0;
         for (const o of e.ask.options) {
           // 승인 선택지(앱 버튼이거나 커밋·푸시·삭제·발송·등록 류)는 관제를 거쳐 보내면 그 세션이 승인으로 받지 않는다
           // (11-10 실측: 「결함 산출」이 상황판에서 온 "commit"을 거절하고 자기 창에서 다시 물음) → Claude 앱에서 그 세션을 연다
           if ((e.ask.app || []).includes(o) || APPROVAL_RE.test(o)) {
-            const a2 = el('a', 'appans', o + ' ↗'); a2.href = 'claude://claude.ai/epitaxy/' + drawerSid;
-            a2.title = '승인이라 그 세션 창에서 직접 답해야 해요. 누르면 Claude 앱에서 이 세션이 열려요';
+            appOps++;
+            const a2 = el('a', 'appans' + (opened === o ? ' opened' : ''), o + (opened === o ? ' · 앱에서 열었어요 ↗' : ' ↗'));
+            a2.href = 'claude://claude.ai/epitaxy/' + drawerSid;
+            a2.title = '승인이라 그 세션 창에서 직접 답해야 해요. 누르면 Claude 앱에서 이 세션이 열려요(답은 보내지 않아요)';
+            // 링크 자체는 문서 전체 클릭 처리(/api/open)가 연다. 여기서는 누른 표시만 남긴다
+            a2.addEventListener('click', () => { openedAsk.set(key, o); setTimeout(() => { box.dataset.sig = ''; paintDrawerLive(); }, 0); });
             ops.append(a2);
             continue;
           }
@@ -2243,6 +2731,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
           ops.append(b);
         }
         a.append(ops);
+        if (appOps) a.append(el('div', 'nosum appnote', opened
+          ? '✓ Claude 앱에서 이 세션을 열었어요. 앱 화면 아래 칸의 「' + opened + '」 버튼을 눌러야 실제로 답이 가요'
+          : '↗ 표시는 승인이라 상황판에서 보내지 않아요. 누르면 Claude 앱에서 이 세션이 열리고, 답은 앱의 같은 버튼으로 해요'));
       }
       box.append(a);
     }

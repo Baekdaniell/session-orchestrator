@@ -14,11 +14,11 @@ VERSION = os.environ.get("SO_VERSION", "0.0.0")
 ICON = os.path.join(SPECPATH, "SessionOrchestrator.icns")  # build/mac/make_icns.py 가 만든다
 
 STDLIB = [
-    # board-agent · board-server · board_live · board-map · board-queue · board-render 가 쓰는 것
+    # board-agent · board-server · board_live · board_docs · board_host · board-map · board-queue · board-render 가 쓰는 것
     "argparse", "collections", "datetime", "errno", "fcntl", "glob", "http.server", "importlib.util", "json", "os",
     "pathlib", "plistlib", "re", "secrets", "signal", "socket", "socketserver", "struct", "subprocess", "threading",
     "time", "urllib.parse", "urllib.request", "webbrowser", "zlib", "email.utils", "html", "mimetypes", "runpy",
-    "faulthandler",
+    "faulthandler", "ctypes", "shutil", "uuid",
 ]
 PYOBJC = ["objc", "AppKit", "Foundation", "PyObjCTools"]  # 메뉴 막대 아이콘(board-agent.py run_menubar)
 

@@ -24,6 +24,17 @@ API
   GET  /api/stream?t=토큰       → 같은 스냅숏을 SSE 로 밀어 줌(바뀔 때마다, 최소 2초 간격). EventSource 는 헤더를 못 붙여 토큰을 쿼리로 받는다
   GET  /api/timeline?hours=N    → 세션 타임라인(활동 구간·메시지 이벤트), N=1~168
   GET  /api/heatmap             → 최근 7일 요일×시간 출력 토큰·활동 분
+  GET  /api/doc?path=…          → md 문서 하나(감시 폴더 · 메모리 폴더 안 .md 만, 읽기 전용) — board_docs
+  GET  /api/doc/list?sid=…      → 그 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일(상세 창 「문서」)
+  GET  /api/doc/recent          → 최근에 바뀐 md 파일(도구줄 「📄 문서」)
+
+상황판이 직접 돌리는 세션(board_host, Windows): 입력창 글이 그 CLI 프로세스에 바로 들어가 작업자 본인 입력이 된다(관제를 안 거침).
+  GET  /pair?c=코드[&s=세션]    → 트레이가 연 창에 입력 열쇠 쿠키를 준다(코드는 트레이 메모리에서 만든 한 번짜리, 60초)
+  GET  /api/host/paired         → {paired(이 창이 입력을 보낼 수 있나), cli(CLI 설치), os}
+  GET  /api/host/state?sid=…    → 그 세션 프로세스 상태 · 허용/질문 대기 목록 · 앱이 잡고 있는지(app_holds)
+  GET  /api/host/list           → 지금 돌리는 세션들
+  POST /api/host/send · answer · stop → 보내기(새 세션 포함) · 허용/거부/선택지 답 · 멈추기. 토큰 + 입력 열쇠 쿠키 + 같은 출처가 있어야 한다
+  (토큰은 파일에 적혀 있어 같은 PC 의 다른 세션도 읽을 수 있다. 열쇠는 서버 메모리에만 있어, 세션이 curl 로 자기 승인을 보내지 못한다)
 
 정적 서빙은 session-board.html·board-snippet.css 만 내준다(11-10). 예전엔 board/ 전체라 .board-token·판정 데이터가 URL 로 열렸다.
 
@@ -42,6 +53,7 @@ import secrets
 import socket
 import socketserver
 import sys
+import threading
 import time
 
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -50,8 +62,36 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I 로 실행해도 같은 폴더의 board_live 를 쓰게
 import board_live  # noqa: E402
+import board_docs  # noqa: E402
+import board_host  # noqa: E402
 
 SID = re.compile(r"^local_[0-9a-f-]{36}$")
+
+# ── 입력 열쇠: 상황판이 직접 돌리는 세션에 보내는 입력(글 · 허용 · 답 · 멈추기) 전용 ──
+# 이 입력은 그 세션에 「작업자 본인 입력」으로 들어간다. 그래서 파일(.board-token · 페이지)에 적힌 상황판 토큰만으로는 못 보내게 한다
+# (같은 PC 의 다른 세션이 토큰 파일을 읽어 curl 로 자기 승인을 보내는 길). 열쇠는 이 서버 프로세스 메모리에만 있고 파일에 안 쓴다.
+# 트레이가 자기가 여는 창에만 한 번 쓰는 연결 코드를 넘기고(/pair), 그 창이 쿠키(HttpOnly · SameSite=Strict)로 받는다.
+INPUT_KEY = secrets.token_urlsafe(32)
+INPUT_COOKIE = "so_in"
+_PAIR = {}  # 연결 코드 → 만료 시각
+_PAIR_LOCK = threading.Lock()
+
+
+def pair_code(ttl=60) -> str:
+    """한 번 쓰는 연결 코드(ttl 초 안에 /pair?c= 로 한 번만 통함). 트레이 · 직접 실행 main 만 부른다."""
+    c = secrets.token_urlsafe(24)
+    now = time.time()
+    with _PAIR_LOCK:
+        for k in [k for k, t in _PAIR.items() if t < now]:
+            _PAIR.pop(k, None)
+        _PAIR[c] = now + ttl
+    return c
+
+
+def _take_pair(c) -> bool:
+    with _PAIR_LOCK:
+        t = _PAIR.pop(str(c or ""), None)
+    return bool(t) and t >= time.time()
 RID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 CLI = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 MAX_TEXT = 4000
@@ -110,6 +150,9 @@ class AppSessions:
                            # 앱이 턴마다 적는 한 줄 상태 요약(사이드바에 보이는 것). 판정 뒤에 움직인 카드의 「마지막 결과」로 쓴다(11-11)
                            "detail": str(pts.get("status_detail") or "")[:200] if fresh else "",
                            "cwd": str(d.get("cwd") or "").lower(),
+                           # 상황판이 이 세션을 CLI 로 이어 돌릴 때 앱과 같은 모델 · 노력 · 권한 모드로(board_host)
+                           "model": str(d.get("model") or ""), "effort": str(d.get("effort") or ""),
+                           "mode": str(d.get("permissionMode") or ""),
                            "cli": [c for c in {d.get("cliSessionId"), d.get("lastAssistantCliSessionId")} if c]}
                     self.cache[f] = hit = (mt, rec)
                 rec = hit[1]
@@ -198,6 +241,8 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if args and any(x in str(args[0]) for x in ("/api/status", "/api/live", "/api/stream", "/api/health")):
             return
+        if args and "/pair?" in str(args[0]):  # 연결 코드는 기록에 남기지 않는다(로그 파일은 다른 세션도 읽을 수 있다)
+            args = (re.sub(r"([?&]c=)[^&\s]+", r"\1***", str(args[0])),) + args[1:]
         super().log_message(fmt, *args)
 
     def end_headers(self):
@@ -221,6 +266,25 @@ class Handler(SimpleHTTPRequestHandler):
         given = self.headers.get("X-Board-Token", "") if given is None else given
         return bool(tok) and secrets.compare_digest(given, tok)
 
+    def _cookie(self, name) -> str:
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
+
+    def _same_origin(self) -> bool:
+        """브라우저 요청이면 이 서버 페이지에서 온 것만(Origin · Sec-Fetch-Site). 다른 사이트 페이지가 보낸 요청을 막는다."""
+        o = self.headers.get("Origin")
+        if o and urlparse(o).netloc != self.headers.get("Host", ""):
+            return False
+        sfs = self.headers.get("Sec-Fetch-Site")
+        return not sfs or sfs in ("same-origin", "none")
+
+    def _input_ok(self) -> bool:
+        """직접 돌리는 세션에 입력을 보내도 되나: 트레이가 연결해 준 창의 쿠키 + 같은 출처."""
+        return self._same_origin() and secrets.compare_digest(self._cookie(INPUT_COOKIE), INPUT_KEY)
+
     def _live(self):
         if not self.tracker:
             return {"ready": False}
@@ -231,6 +295,7 @@ class Handler(SimpleHTTPRequestHandler):
         snap["extra"] = [{"sid": sid, "title": (recs.get(sid) or {}).get("title") or e.get("title") or ""}
                          for sid, e in (snap.get("sessions") or {}).items() if sid not in self._map[3] and sid in recs]
         self._apply_app_state(snap, recs)
+        self._apply_host(snap, self.mapping())
         # 판정 행인데 앱 기록에 없거나(삭제) 보관된 세션 → 페이지·트레이가 뺀다. 기록을 못 읽으면(빈 결과) 아무것도 빼지 않는다
         snap["gone"] = [sid for sid in self._map[3] if sid not in recs or recs[sid]["archived"]] if recs else []
         return snap
@@ -284,6 +349,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/pair":  # 트레이가 연 창: 한 번 쓰는 코드 → 입력 열쇠 쿠키, 그리고 상황판으로
+            qs = parse_qs(u.query)
+            ok = _take_pair(qs.get("c", [""])[0])
+            sid = qs.get("s", [""])[0]
+            self.send_response(302)
+            if ok:
+                self.send_header("Set-Cookie", f"{INPUT_COOKIE}={INPUT_KEY}; HttpOnly; SameSite=Strict; Path=/")
+            self.send_header("Location", "/session-board.html" + (f"#s={sid}" if SID.match(sid) else ""))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if u.path == "/api/health":
             return self._json(200, {
                 "ok": True,
@@ -303,12 +379,31 @@ class Handler(SimpleHTTPRequestHandler):
                         return self._json(200, {"state": d["state"], "result": d.get("result", ""), "finished_at": d.get("finished_at", "")})
                     return self._json(200, {"state": "queued" if state == "inbox" else "working"})
             return self._json(404, {"state": "unknown"})
-        if u.path in ("/api/live", "/api/stream", "/api/timeline", "/api/heatmap", "/api/transcript"):
+        if u.path in ("/api/live", "/api/stream", "/api/timeline", "/api/heatmap", "/api/transcript", "/api/host/state", "/api/host/list",
+                      "/api/host/paired", "/api/doc", "/api/doc/list", "/api/doc/recent"):
             qs = parse_qs(u.query)
             if not (self._auth(qs.get("t", [""])[0]) or self._auth()):  # 쿼리 t 또는 X-Board-Token 헤더
                 return self._json(403, {"error": "token"})
             if u.path == "/api/transcript":
                 return self._transcript(qs)
+            if u.path.startswith("/api/doc"):
+                return self._doc(u.path, qs)
+            if u.path == "/api/host/paired":  # 이 창이 직접 돌리는 세션에 입력을 보낼 수 있나(트레이가 연 창인가)
+                return self._json(200, {"paired": self._input_ok(), "cli": bool(board_host.find_cli()), "os": os.name})
+            if u.path == "/api/host/list":
+                return self._json(200, {"cli": bool(board_host.find_cli()), "sessions": self.host_mgr().list()})
+            if u.path == "/api/host/state":
+                cli = qs.get("cli", [""])[0]
+                sid = qs.get("sid", [""])[0]
+                if not cli and SID.match(sid):
+                    p = self.transcript_path(sid=sid)
+                    cli = p.stem if p else ""
+                h = self.host_mgr().get(cli) if cli else None
+                st = h.state() if h else {"alive": False, "busy": False, "cli": cli, "pending": []}
+                st["cli_installed"] = bool(board_host.find_cli())
+                st["app_holds"] = bool(cli) and not (h and h.alive()) and board_host.held_by_app(cli)
+                st["released"] = bool(cli) and not (h and h.alive()) and cli in self.host_mgr().released
+                return self._json(200, st)
             if u.path == "/api/timeline":
                 try:
                     hours = max(1, min(24 * 7, int(qs.get("hours", ["6"])[0])))
@@ -331,7 +426,7 @@ class Handler(SimpleHTTPRequestHandler):
     def transcript_path(self, sid=None, cli=None):
         """사이드바 세션 id(또는 대화 id) → 그 세션의 대화 파일(가장 최근에 쓰인 것). 앱 기록 · 판정 짝 · 대화 폴더 순으로 찾는다."""
         if cli:
-            clis = {cli} if CLI.match(cli) else set()
+            clis = {cli} if board_host.UUID_RE.match(cli) else set()
         else:
             clis = set((self.app_records().get(sid) or {}).get("cli") or [])
             clis |= {c for c, s in self.mapping().items() if s == sid}
@@ -340,10 +435,87 @@ class Handler(SimpleHTTPRequestHandler):
         found = [p for p in found if p.exists()]
         return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
+    hosts = None  # board_host.HostManager — 상황판이 직접 돌리는 CLI 세션들(처음 쓸 때 만든다)
+
+    @classmethod
+    def host_mgr(cls):
+        if cls.hosts is None:
+            cls.hosts = board_host.HostManager()
+        return cls.hosts
+
+    def _host_target(self, body):
+        """보낼 세션 → (대화 id, 작업 폴더, 이어받기 여부, 모델, 노력, 권한 모드). new 면 감시 폴더에서 새 대화."""
+        ws = str(board_live.watched_workspace(self.root))
+        if body.get("new"):
+            return self.host_mgr().new_id(), ws, False, None, None, None
+        sid, cli = str(body.get("sid") or ""), str(body.get("cli") or "")
+        if sid and not SID.match(sid):
+            raise ValueError("bad sid")
+        path = self.transcript_path(sid=sid) if sid else self.transcript_path(cli=cli)
+        if not path:
+            raise FileNotFoundError("이 세션의 대화 파일을 못 찾았어요")
+        rec = (self.app_records().get(sid) or {}) if sid else {}
+        return path.stem, board_docs.transcript_cwd(path) or ws, True, rec.get("model") or None, rec.get("effort") or None, rec.get("mode") or None
+
+    def _host_post(self, path, body):
+        """상황판이 직접 돌리는 세션: send(보내기 · 새 세션) / answer(허용 · 거부 · 선택지 답) / stop(멈추기)."""
+        mgr = self.host_mgr()
+        try:
+            if path == "/api/host/send":
+                text = str(body.get("text", "")).strip()
+                if not text or len(text) > 20000:
+                    return self._json(400, {"error": "보낼 글이 없거나 너무 깁니다"})
+                cli, cwd, resume, model, effort, mode = self._host_target(body)
+                h = mgr.ensure(cli, cwd, resume, model, effort, mode)
+                if h.busy:
+                    return self._json(409, {"error": "세션이 아직 답하는 중이에요. 끝나면 보내거나 「멈추기」를 누르세요"})
+                h.send(text)
+                return self._json(200, {"ok": True, "cli": cli})
+            cli = str(body.get("cli", ""))
+            h = mgr.get(cli)
+            if not h or not h.alive():
+                return self._json(404, {"error": "상황판이 돌리는 세션이 아니에요(꺼졌으면 다시 보내면 이어 받아요)"})
+            if path == "/api/host/answer":
+                beh = str(body.get("behavior", ""))
+                if beh not in ("allow", "deny"):
+                    return self._json(400, {"error": "behavior"})
+                answers = body.get("answers") if isinstance(body.get("answers"), dict) else None
+                h.answer(str(body.get("request_id", "")), beh, str(body.get("message", ""))[:500], answers)
+                return self._json(200, {"ok": True})
+            if path == "/api/host/stop":
+                h.interrupt()
+                return self._json(200, {"ok": True})
+        except PermissionError as e:
+            return self._json(409, {"error": str(e)})
+        except (FileNotFoundError, KeyError, ValueError) as e:
+            return self._json(400, {"error": str(e).strip("'")})
+        except RuntimeError as e:
+            return self._json(500, {"error": str(e)})
+        except OSError as e:
+            return self._json(500, {"error": f"세션 프로세스 오류: {e}"})
+        return self._json(404, {"error": "not found"})
+
+    @staticmethod
+    def _apply_host(snap, mapping):
+        """상황판이 돌리는 세션이 허용 · 답을 기다리면 카드에 「내 답 대기」로(앱 판정과 별개, 이쪽이 확실)."""
+        mgr = Handler.hosts
+        if not mgr:
+            return
+        by_cli = {u.get("cli"): u for u in snap.get("unmapped") or []}
+        for st in mgr.list():
+            e = (snap.get("sessions") or {}).get(mapping.get(st["cli"], "")) or by_cli.get(st["cli"])
+            if not e:
+                continue
+            e["hosted"] = {"busy": st["busy"], "pending": len(st["pending"]), "mode": st["mode"]}
+            if st["pending"]:
+                p = st["pending"][0]
+                text = ("질문: " + str((p.get("questions") or [{}])[0].get("question", ""))) if p["kind"] == "question" else ("허용 요청: " + p["tool"])
+                e.update(state="asking", label=text, ask={"text": text, "options": [], "app": [], "kind": "host"})
+
     def _transcript(self, qs):
         """GET /api/transcript?sid=…[&before=바이트|&after=바이트] → 상세 창의 「대화」(읽기 전용)."""
         sid, cli = qs.get("sid", [""])[0], qs.get("cli", [""])[0]
-        if not SID.match(sid) and not CLI.match(cli):
+        if not SID.match(sid) and not board_host.UUID_RE.match(cli):
             return self._json(400, {"error": "bad sid"})
         path = self.transcript_path(sid=sid) if SID.match(sid) else self.transcript_path(cli=cli)
         if not path:
@@ -362,6 +534,49 @@ class Handler(SimpleHTTPRequestHandler):
         out["file"] = path.stem
         return self._json(200, out)
 
+    def _doc(self, path, qs):
+        """상황판 「문서」(md 읽기 전용, board_docs):
+        GET /api/doc?path=…[&sid=…&base=…|&wiki=이름][&ver=…] → 문서 하나(ver 가 같으면 {unchanged})
+        GET /api/doc/list?sid=…  → 그 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일
+        GET /api/doc/recent      → 감시 폴더 · 메모리 폴더에서 최근에 바뀐 md 파일"""
+        ws = board_live.watched_workspace(self.root)
+
+        def q(k):
+            return qs.get(k, [""])[0]
+        try:
+            if path == "/api/doc/recent":
+                return self._json(200, board_docs.recent(ws))
+            sid = q("sid")
+            if sid and not SID.match(sid):
+                return self._json(400, {"error": "bad sid"})
+            tp = self.transcript_path(sid=sid) if sid else None
+            if path == "/api/doc/list":
+                if not tp:
+                    return self._json(404 if sid else 400, {"error": "대화 파일을 못 찾음" if sid else "sid 필요"})
+                return self._json(200, {"items": board_docs.touched(tp, ws)})
+            allowed = board_docs.roots(ws)
+            bases = []
+            if q("base"):  # 보던 문서의 폴더(문서 속 상대 링크)
+                try:
+                    b = Path(q("base")).resolve()
+                    if board_docs.inside(b, allowed):
+                        bases.append(str(b))
+                except OSError:
+                    pass
+            if tp:  # 그 세션의 작업 폴더(대화 속 상대 경로)
+                c = board_docs.transcript_cwd(tp)
+                if c:
+                    bases.append(c)
+            bases.append(str(ws))
+            p = board_docs.resolve_wiki(q("wiki"), allowed, bases) if q("wiki") else board_docs.resolve(q("path"), allowed, bases)
+            if not p:
+                return self._json(404, {"error": "감시 폴더 안에 있는 md 파일만 열 수 있어요(파일이 없거나 폴더 밖)"})
+            if q("ver") and q("ver") == board_docs.version(p):
+                return self._json(200, {"unchanged": True})
+            return self._json(200, board_docs.read(p, ws))
+        except OSError as e:
+            return self._json(500, {"error": str(e)})
+
     def do_POST(self):
         u = urlparse(self.path)
         if not u.path.startswith("/api/"):
@@ -375,6 +590,10 @@ class Handler(SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "bad json"})
+        if u.path.startswith("/api/host/"):
+            if not self._input_ok():  # 토큰만으로는 안 됨(파일에 적혀 있어 다른 세션도 읽을 수 있다) — 트레이가 연 창의 쿠키가 있어야
+                return self._json(403, {"error": "트레이 아이콘으로 연 상황판 창에서만 보낼 수 있어요(입력 열쇠 없음)"})
+            return self._host_post(u.path, body)
         if u.path == "/api/open":
             # Claude 앱에서 그 세션 열기. Edge 앱 창(--app)은 claude:// 링크를 앱에 넘기지 못해 「↗」를 눌러도 반응이 없었다
             # (11-11 실측: 같은 링크를 Windows 로 열면 앱이 그 세션으로 바뀜). 그래서 서버(트레이 프로세스)가 대신 연다
@@ -452,6 +671,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default="board")
     ap.add_argument("--port", type=int, default=0, help="기본: board/config.json 의 port, 없으면 18799")
+    ap.add_argument("--pair", type=int, default=0, metavar="초", help="개발용: 입력 연결 주소를 찍는다(이 초 안에 한 번)")
     a = ap.parse_args()
     root = Path(a.root).resolve()
     if not a.port:
@@ -471,6 +691,8 @@ def main() -> None:
     Handler.tracker.start()
     srv = Server(("127.0.0.1", a.port), Handler)
     print(f"board-server: http://127.0.0.1:{a.port}/  root={root}", flush=True)
+    if a.pair:  # 개발용: 입력 열쇠를 받을 창 주소(60초 · 한 번). 평소엔 트레이가 창을 열며 넘긴다
+        print(f"board-server: 입력 연결 http://127.0.0.1:{a.port}/pair?c={pair_code(a.pair)}", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

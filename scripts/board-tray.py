@@ -595,6 +595,8 @@ class Tray:
         self.last_toast = 0.0
         self.toast_sid = None
         self.last_open = 0.0
+        self.mod = None  # 이 트레이가 품은 서버 모듈(입력 연결 코드를 만든다)
+        self.paired = False  # 이번 실행에서 입력 열쇠를 준 창을 열었나(트레이가 다시 뜨면 열쇠가 바뀌어 예전 창은 못 보냄)
         self.first = True
         self._updating = False  # 새 버전 확인이 겹쳐 돌지 않게
         self.release_url = f"https://github.com/{REPO}/releases/latest"
@@ -684,6 +686,7 @@ class Tray:
             self.set_status(f"서버를 못 띄움: {e}"[:200])
             return False
         self.httpd = httpd
+        self.mod = mod
         threading.Thread(target=self.httpd.serve_forever, daemon=True, name="board-server").start()
         self.own_server = True
         self.set_status("이 트레이가 띄움")
@@ -934,12 +937,19 @@ class Tray:
             self.show_toast("상황판 서버를 못 띄웠어요", f"{self.status}\n누르면 로그(tray.log)가 열려요", "__log__")
             return
         hwnd = find_board_window()
-        if hwnd:
+        can_pair = self.mod is not None and hasattr(self.mod, "pair_code")
+        if hwnd and (self.paired or not can_pair):
             if IsIconic(hwnd):
                 ShowWindow(hwnd, 9)  # SW_RESTORE
             SetForegroundWindow(hwnd)
             return
-        url = BASE + "/session-board.html" + (f"#s={sid}" if sid else "")
+        if hwnd:  # 트레이가 다시 뜨기 전에 연 창: 입력 열쇠가 바뀌어 직접 돌리는 세션에 못 보낸다 → 닫고 새로 연다
+            PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+        if can_pair:  # 입력 열쇠는 이 창에만: 한 번 쓰는 코드를 붙여 열면 서버가 쿠키로 준다(파일에는 안 남는다)
+            url = BASE + f"/pair?c={self.mod.pair_code()}" + (f"&s={sid}" if sid else "")
+            self.paired = True
+        else:
+            url = BASE + "/session-board.html" + (f"#s={sid}" if sid else "")
         edge = edge_path()
         try:
             if edge:
