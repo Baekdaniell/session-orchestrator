@@ -867,6 +867,9 @@ class Tray:
                 ls = "idle"  # 글로 추정했는데 앱 판정이 없는 질문은 세지 않는다
             if ls in ("working", "waiting_tool"):
                 continue
+            mk = r.get("marked_at") or 0
+            if mk and ((live.get(sid) or {}).get("ts") or 0) <= mk:
+                continue  # 작업자가 카드 버튼으로 옮긴 열(완료·정리 후보, 11-18) — 그 뒤 다시 움직이기 전까진 세지 않는다
             jt = md_ts(r.get("judged_at"))
             fresh = ((live.get(sid) or {}).get("ts") or 0) > jt  # 판정 뒤에 다시 움직임
             replied = ((live.get(sid) or {}).get("uts") or 0) > jt  # 판정 뒤에 작업자가 직접 답함

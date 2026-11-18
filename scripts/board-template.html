@@ -285,6 +285,8 @@ body.linking [data-list] > [data-sid]:not(.rel) { opacity: .35; transition: opac
 .arch[disabled] { opacity: .5; cursor: progress; }
 .arch.del:hover, .drawer .acts button.del:hover { background: var(--danger); color: var(--on-red); border-color: var(--danger); }
 .arch.ghost { border-style: dashed; }
+/* 열 옮기기(✅ 완료로 · 🧹 정리 후보로): 지우는 버튼이 아니라 빨강 대신 초록 */
+.arch.mark:hover, :root:not([data-skin="flat"]) .arch.mark:hover { background-color: color-mix(in srgb, var(--c-green) 16%, var(--panel)); color: var(--fg); border-color: color-mix(in srgb, var(--c-green) 55%, var(--line)); }
 .bulk { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
 .kb-col .bulk { padding: 0 6px; }
 .arch-row { gap: 6px; }
@@ -1276,6 +1278,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       b.addEventListener('click', () => archive([r]));
       const d = el('button', 'arch del', '🗑 삭제'); d.type = 'button'; d.title = '대화·워크트리까지 영구 삭제(되돌릴 수 없음, Claude 앱 승인 필요)';
       d.addEventListener('click', () => removeSessions([r]));
+      // 다음 열로 한 칸(내 답 대기 → 완료 → 정리 후보, 11-18). 도는 세션 · 판정 전 임시 카드(판정 행이 없음)에는 안 붙인다
+      if (!r.synthetic && markNext(r.status)) row.append(markBtn(r, markNext(r.status), 'arch mark'));
       row.append(h, b, d);
       (node.tagName === 'TR' ? node.firstChild : node).append(row);
     }
@@ -2053,6 +2057,33 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     location.reload();
   };
   const unhideAll = () => { hiddenMap = {}; try { localStorage.removeItem(HKEY); } catch {} location.reload(); };
+  // ── 열 옮기기(작업자가 직접, 11-18): 끝낸 세션이 내 답 대기에 남거나, 다 본 완료를 정리 후보로 넘길 때.
+  //    서버가 판정 행만 바꾸고 다시 그린다(관제를 거치지 않음). 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다
+  //    카드는 첫 그리기 때 만들어지므로(이 줄보다 먼저 돈다) 아래는 함수 선언으로 — const 면 첫 그리기에서 TDZ 오류
+  function markNext(status) { return { '내 답 대기': '완료', '완료': '정리 후보' }[status] || ''; }
+  function markBtn(r, status, cls) {
+    const label = { '완료': '✅ 완료로', '정리 후보': '🧹 정리 후보로' }[status];
+    const b = el('button', cls, label); b.type = 'button';
+    b.title = status === '완료' ? '이 세션은 끝났다고 보고 완료 열로 옮겨요. 세션이 다시 움직이면 실시간 상태를 따라가요'
+      : '다 본 세션을 정리 후보 열로 옮겨요. 보관·삭제는 따로 눌러야 해요';
+    b.addEventListener('click', () => markRow(r, status, b));
+    return b;
+  }
+  async function markRow(r, status, btn) {
+    const sid = sidOf(r);
+    if (!sid || (status !== '완료' && status !== '정리 후보')) return;
+    if (btn) btn.disabled = true;
+    const st = $('.link-state');
+    try {
+      await api('/api/mark', { session_id: sid, status });
+      if (st) st.textContent = '「' + r.session + '」 → ' + status + ' ✓';
+      location.reload();
+    } catch (e) {
+      const msg = /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message;
+      if (st) st.textContent = '옮기지 못했어요: ' + msg;
+      if (btn) { btn.disabled = false; btn.title = '옮기지 못했어요: ' + msg; }
+    }
+  }
   const removeSessions = async (list) => {
     const targets = list.filter((r) => sidOf(r)).slice(0, 25);
     if (!targets.length) return;
@@ -2563,6 +2594,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       }
     }
     if (sid) {
+      // 열 옮기기: 지금 열과 실행 중을 뺀 둘(완료 · 정리 후보) 중 다른 쪽
+      if (!r.synthetic && r.status !== '실행 중') ['완료', '정리 후보'].filter((s) => s !== r.status).forEach((s) => acts.append(markBtn(r, s, '')));
       const hb = el('button', '', '🙈 숨기기'); hb.type = 'button'; hb.addEventListener('click', () => hideSessions([r])); acts.append(hb);
       const ab = el('button', '', '🗄 보관'); ab.type = 'button'; ab.addEventListener('click', () => archive([r])); acts.append(ab);
       const db = el('button', 'del', '🗑 삭제'); db.type = 'button'; db.addEventListener('click', () => removeSessions([r])); acts.append(db);
@@ -2606,6 +2639,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     || !!document.querySelector('[data-list] > :hover');
   const effStatus = (r, e) => {
     if (e && (e.state === 'working' || e.state === 'waiting_tool')) return '실행 중';
+    // 작업자가 카드 버튼으로 직접 옮긴 열(11-18)은 세션이 그 뒤 다시 움직이기 전까지 그대로(남은 질문 띠가 있어도)
+    if (r.marked_at && !(e && e.ts && e.ts > r.marked_at)) return r.judged;
     // 작업자에게 묻고 멈춘 세션은 판정과 상관없이 내 답 대기(11-10). 정리 후보로 판정된 오래된 질문만 그 열에 두고 띠만 붙인다
     // (판정 뒤에 다시 움직여 질문했으면 판정이 낡은 것이므로 올린다)
     // weak = 글로 추정했는데 앱 판정이 없는 질문 → 띠만 붙이고 열은 안 옮긴다

@@ -217,6 +217,7 @@ class FileState:
         self.title = ""              # 사이드바 제목(앱이 type "custom-title" 줄로 쓴다). 판정 전 새 세션 카드 이름으로 쓴다
         self.ask = None              # 작업자에게 남긴 질문 {text, options, kind, ts, id} — 작업자가 답하면(사용자 줄) 지운다
         self.last_tail_text = ""     # 마지막 assistant 글의 마지막 줄(물음표로 끝나면 질문으로 추정)
+        self.last_auid = ""          # 본 대화 마지막 assistant 줄 uuid — 앱 판정이 이 턴 것인지 맞춰 본다(board-server _apply_app_state)
 
     def feed(self, raw: bytes):
         data = self.tail + raw
@@ -281,6 +282,7 @@ class FileState:
             return
         content = m.get("content")
         if typ == "assistant":
+            self.last_auid = d.get("uuid") or self.last_auid
             tools, texts = [], []
             for b in content if isinstance(content, list) else []:
                 if b.get("type") == "tool_use":
@@ -625,7 +627,7 @@ class Tracker(threading.Thread):
             if fs.cli in exclude:
                 continue
             e = {
-                "cli": fs.cli, "title": fs.title, "state": state, "label": label, "age": int(age), "ts": int(fs.last_ts or 0), "uts": int(fs.user_ts or 0),
+                "cli": fs.cli, "title": fs.title, "state": state, "label": label, "age": int(age), "ts": int(fs.last_ts or 0), "uts": int(fs.user_ts or 0), "auid": fs.last_auid,
                 "last": datetime.fromtimestamp(fs.last_ts, KST).strftime("%m-%d %H:%M") if fs.last_ts else "",
                 # sums() 의 캐시 dict 를 그대로 넘기면 아래 합치기에서 캐시가 오염되므로 복사
                 "text": fs.last_text, "model": fs.model, "tokens": dict(total), "today": dict(day),
@@ -640,7 +642,7 @@ class Tracker(threading.Thread):
                         e["tokens"][k] = e["tokens"][k] + prev["tokens"][k]
                         e["today"][k] = e["today"][k] + prev["today"][k]
                     if prev["age"] < e["age"]:
-                        e.update({x: prev[x] for x in ("state", "label", "age", "last", "text", "model", "cli", "ask", "ts", "uts", "bg", "bg_done")})
+                        e.update({x: prev[x] for x in ("state", "label", "age", "last", "text", "model", "cli", "ask", "ts", "uts", "auid", "bg", "bg_done")})
                 sessions[sid] = e
             elif state in ("working", "waiting_tool") or age < 86400:  # 판정 뒤 생긴 세션: 돌고 있거나 하루 안에 움직인 것만 임시 카드로(오래된 질문은 빼기)
                 unmapped.append(e)

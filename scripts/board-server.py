@@ -96,6 +96,8 @@ RID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 CLI = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 MAX_TEXT = 4000
 STATES = ("done", "working", "inbox")
+MARKABLE = ("완료", "정리 후보")  # 카드 버튼으로 작업자가 직접 옮길 수 있는 열
+_MARK_LOCK = threading.Lock()
 STATIC = {"/session-board.html", "/board-snippet.css"}  # 이 둘만 정적으로 내준다
 
 
@@ -147,6 +149,8 @@ class AppSessions:
                     rec = {"sid": d.get("sessionId", ""), "title": str(d.get("title") or "")[:120], "archived": bool(d.get("isArchived")),
                            # 앱이 마지막 턴마다 매기는 상태(completed·blocked)와 작업자 할 일. 마지막 턴 것일 때만 쓴다
                            "app_state": pts.get("status_category") if fresh else None, "needs": str(pts.get("needs_action") or "")[:200],
+                           # 앱이 판정한 턴(assistant 줄 uuid). 상황판이 직접 돌린 턴은 앱 기록을 안 고쳐서, 대화 파일의 마지막 턴과 다르면 낡은 판정이다(11-18)
+                           "pts_for": str(d.get("postTurnSummaryFor") or ""),
                            # 앱이 턴마다 적는 한 줄 상태 요약(사이드바에 보이는 것). 판정 뒤에 움직인 카드의 「마지막 결과」로 쓴다(11-11)
                            "detail": str(pts.get("status_detail") or "")[:200] if fresh else "",
                            "cwd": str(d.get("cwd") or "").lower(),
@@ -305,11 +309,15 @@ class Handler(SimpleHTTPRequestHandler):
         """앱 자체 판정으로 질문 대기를 바로잡는다.
         - 글로 추정한 질문(kind text): 앱이 completed 면 질문 아님(쉼), blocked 면 질문, 판정 없으면 weak(띠만, 열은 안 옮김)
         - 질문 문장이 없어도 앱이 blocked 로 본 쉬는 세션 → 질문 대기(kind app, 글 = 앱이 적은 할 일)
-        - 다음 단계 질문·AskUserQuestion(확정)은 건드리지 않는다. 도는 세션도 그대로"""
+        - 다음 단계 질문·AskUserQuestion(확정)은 건드리지 않는다. 도는 세션도 그대로
+        - 앱 판정이 대화 파일의 마지막 턴 것이 아니면(상황판이 직접 돌린 턴 등) 판정이 없는 것으로 친다(11-18: 며칠 전
+          「확인 필요」 판정이 남아, 상황판에서 「종료해 주세요」로 끝낸 세션이 내 답 대기에 묶였다)"""
         for sid, e in (snap.get("sessions") or {}).items():
-            st = (recs.get(sid) or {}).get("app_state")
-            if (recs.get(sid) or {}).get("detail"):
-                e["app_detail"] = recs[sid]["detail"]
+            rec = recs.get(sid) or {}
+            stale = bool(e.get("auid") and rec.get("pts_for") and e["auid"] != rec["pts_for"])
+            st = None if stale else rec.get("app_state")
+            if rec.get("detail") and not stale:
+                e["app_detail"] = rec["detail"]
             ask = e.get("ask")
             if e.get("state") == "asking" and ask and ask.get("kind") == "text":
                 if st == "completed":
@@ -322,6 +330,33 @@ class Handler(SimpleHTTPRequestHandler):
         for u in snap.get("unmapped") or []:  # 앱 기록과 짝이 없으면 판정할 길이 없으니 추정 질문은 weak
             if u.get("state") == "asking" and (u.get("ask") or {}).get("kind") == "text":
                 u["ask"]["weak"] = True
+
+    def _mark(self, sid, status):
+        """판정 행 하나의 열을 작업자가 직접 바꾼다. judged_at 은 지금, marked_at 은 그 시각(초) — 페이지·트레이는
+        세션이 marked_at 뒤에 다시 움직이기 전까지 이 열을 따른다. 바꾼 뒤 상황판 HTML 을 다시 그린다."""
+        src = self.root / "board-sessions.json"
+        with _MARK_LOCK:
+            rows = json.loads(src.read_text(encoding="utf-8"))
+            hit = False
+            for r in rows:
+                if isinstance(r, dict) and str(r.get("link", "")).endswith(sid) and r.get("status") != "관제":
+                    r.update(status=status, judged_at=time.strftime("%m-%d %H:%M"), marked_at=int(time.time()))
+                    hit = True
+            if not hit:
+                return False
+            tmp = src.with_name(src.name + ".tmp")
+            tmp.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(src)
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("board_render", Path(__file__).with_name("board-render.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            try:
+                mod.main(str(src), str(self.root / "session-board.html"))
+            except SystemExit as e:
+                if e.code not in (0, None):
+                    raise RuntimeError(f"다시 그리기 실패: {e.code}")
+        return True
 
     def _stream(self):
         """SSE: 스냅숏이 바뀌면(또는 15초마다 생존 신호) 보낸다. 브라우저가 연결을 끊으면 끝."""
@@ -610,6 +645,18 @@ class Handler(SimpleHTTPRequestHandler):
             except OSError as e:
                 return self._json(500, {"error": str(e)})
             return self._json(200, {"ok": True})
+        if u.path == "/api/mark":
+            # 카드의 「✅ 완료로」·「🧹 정리 후보로」: 작업자가 직접 열을 옮긴다(관제를 거치지 않음, 11-18).
+            # 판정 행만 바꾸고 다시 그린다. 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다(marked_at)
+            sid = str(body.get("session_id", ""))
+            status = str(body.get("status", ""))
+            if not SID.match(sid) or status not in MARKABLE:
+                return self._json(400, {"error": "bad request"})
+            try:
+                hit = self._mark(sid, status)
+            except Exception as e:
+                return self._json(500, {"error": str(e)[:200]})
+            return self._json(200 if hit else 404, {"ok": hit} if hit else {"error": "상황판에 그 세션 행이 없어요"})
         if u.path == "/api/summarize":
             sid = str(body.get("session_id", ""))
             if not SID.match(sid):
