@@ -140,7 +140,11 @@ button, input, select { font: inherit; color: inherit; }
 .drawer .conv-h { display: flex; align-items: center; gap: 10px; }
 .drawer .conv-tools { margin-left: auto; display: inline-flex; gap: 10px; font-weight: 400; letter-spacing: 0; }
 .drawer .conv-tools label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.drawer .conv { max-height: 62vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: .92em; }
+/* 스크롤은 상세 창 하나만(11-19): 대화 칸의 자체 스크롤(62vh)을 없애고, 상세 창이 열린 동안 뒤 페이지 스크롤도 잠근다 */
+html:has(#drawer:not(.hidden)) { overflow: hidden; }
+.drawer .to-end { position: sticky; bottom: 10px; display: block; margin: 10px 0 0 auto; padding: 5px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg-2); font: 600 .82em var(--font); cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.drawer .to-end:hover { background: var(--hover); color: var(--fg); }
+.drawer .conv { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: .92em; }
 .drawer .conv .msg { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .drawer .conv .msg.user { align-self: flex-end; max-width: 88%; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
 .drawer .conv .msg.tool { font: .82em/1.45 ui-monospace, Consolas, monospace; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1048,13 +1052,15 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <div class="box" id="d-result"></div>
     <h3>문서 <span class="h-note">이 세션이 쓰고 · 고치고 · 읽고 · 말한 md 파일 — 누르면 읽기</span></h3>
     <div class="box docs" id="d-docs"><span class="nosum">불러오는 중…</span></div>
-    <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label></span></h3>
-    <div class="conv" id="d-conv"><span class="nosum">불러오는 중…</span></div>
     <h3>실시간</h3>
     <div class="box" id="d-live"><span class="nosum">아직 실시간 정보가 없어요</span></div>
     <h3>연결 (최근 48시간)</h3>
     <div class="box" id="d-links"><span class="nosum">주고받은 요청이 없어요</span></div>
     <div class="acts" id="d-acts"></div>
+    <!-- 대화는 맨 끝(11-19): 자체 스크롤 없이 상세 창 스크롤 하나로 읽는다. 맨 아래 = 최신 -->
+    <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label></span></h3>
+    <div class="conv" id="d-conv"><span class="nosum">불러오는 중…</span></div>
+    <button type="button" class="to-end hidden" id="d-to-end">↓ 최신 대화</button>
   </div>
   <div class="df" id="d-chat"><div class="hostbox hidden" id="d-host"></div></div>
 </aside>
@@ -2243,6 +2249,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   //    새로 붙은 줄만 더한다. 위의 「이전 대화 더 보기」로 앞을 더 읽는다. 글은 전부 textContent 로 넣는다(대화 속 HTML 이 실행되지 않게)
   const conv = { sid: '', start: 0, end: 0, timer: null, busy: false, lastDay: '' };
   const convBox = () => $('#d-conv');
+  // 대화는 자체 스크롤이 없다(11-19) — 스크롤 위치는 상세 창 본문(.db) 기준. 아래에서 멀면 「↓ 최신 대화」를 띄운다
+  function convScroller() { return $('#drawer .db'); }
+  function toEndPill() {
+    const sc = convScroller(), b = $('#d-to-end');
+    if (sc && b) b.classList.toggle('hidden', sc.scrollHeight - sc.scrollTop - sc.clientHeight < 300);
+  }
   const KST = (ts) => { const d = new Date(ts); return isNaN(d) ? null : d; };
   // 가벼운 마크다운(앱 대화창처럼 읽히게): 코드 블록 · 표 · 목록 · 제목 · 인용과 줄 안의 **굵게** · `코드` · [글](링크).
   // innerHTML 을 쓰지 않고 요소를 만들어 글은 textContent 로만 넣는다
@@ -2355,6 +2367,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const convLoad = async (sid) => {
     clearInterval(conv.timer);
     Object.assign(conv, { sid, start: 0, end: 0, busy: false, lastDay: '' });
+    convScroller().scrollTop = 0;  // 다른 카드를 열면 맨 위부터
     const box = convBox(); box.textContent = ''; box.append(el('span', 'nosum', '불러오는 중…'));
     try {
       const r = await fetch(convUrl('')).then((x) => x.ok ? x.json() : Promise.reject(new Error(x.status === 404 ? '이 세션의 대화 파일을 못 찾았어요' : 'HTTP ' + x.status)));
@@ -2364,7 +2377,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       for (const it of r.items) { const dEl = dayEl(it); if (dEl) box.append(dEl); box.append(msgEl(it)); }
       if (!r.items.length) box.append(el('span', 'nosum', '아직 대화가 없어요'));
       conv.start = r.start; conv.end = r.end;
-      box.scrollTop = box.scrollHeight;
+      toEndPill();  // 처음엔 맨 위(제목·할 일)부터 — 최신 대화는 「↓ 최신 대화」나 스크롤로
       conv.timer = setInterval(convTail, 3000);
     } catch (e) { box.textContent = ''; box.append(el('span', 'nosum', /fetch/i.test(e.message) ? '로컬 서버가 꺼져 있어요' : e.message)); }
   };
@@ -2374,10 +2387,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     try {
       const r = await fetch(convUrl('&after=' + conv.end)).then((x) => x.ok ? x.json() : null);
       if (r && r.items.length && conv.sid) {
-        const box = convBox(); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+        const box = convBox(), sc = convScroller(); const atEnd = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 40;
         box.querySelectorAll(':scope > .nosum').forEach((x) => x.remove());
         for (const it of r.items) { const dEl = dayEl(it); if (dEl) box.append(dEl); box.append(msgEl(it)); }
-        if (atEnd) box.scrollTop = box.scrollHeight;
+        if (atEnd) sc.scrollTop = sc.scrollHeight;
+        toEndPill();
       }
       if (r) conv.end = r.end;
     } catch {}
@@ -2389,7 +2403,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       b.disabled = true; b.textContent = '불러오는 중…';
       try {
         const r = await fetch(convUrl('&before=' + conv.start)).then((x) => x.json());
-        const box = convBox(); const h0 = box.scrollHeight;
+        const sc = convScroller(); const h0 = sc.scrollHeight;
         const frag = document.createDocumentFragment();
         if (r.more) frag.append(moreBtn());
         const saved = conv.lastDay; conv.lastDay = '';
@@ -2397,11 +2411,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         conv.lastDay = saved;
         b.replaceWith(frag);
         conv.start = r.start;
-        box.scrollTop += box.scrollHeight - h0;  // 보던 자리 그대로
+        sc.scrollTop += sc.scrollHeight - h0;  // 보던 자리 그대로
       } catch { b.disabled = false; b.textContent = '⬆ 다시 시도'; }
     });
     return b;
   };
+  convScroller().addEventListener('scroll', toEndPill, { passive: true });
+  $('#d-to-end').addEventListener('click', () => { const sc = convScroller(); sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); });
   $('#d-conv-res').addEventListener('change', (e) => convBox().classList.toggle('show-res', e.target.checked));
   $('#d-conv-note').addEventListener('change', (e) => convBox().classList.toggle('show-note', e.target.checked));
 
