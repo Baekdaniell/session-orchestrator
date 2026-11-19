@@ -359,6 +359,8 @@ CB_MSG = WM_APP + 1
 WM_TEST_TOAST = WM_APP + 0x30   # `SessionOrchestrator.exe notify-test` 가 보낸다(알림 모양 확인용)
 WM_UPDATE_CHECK = WM_APP + 0x31  # `SessionOrchestrator.exe update-check` 가 보낸다
 WM_OPEN_BOARD = WM_APP + 0x32    # `SessionOrchestrator.exe`(또는 `open`)를 다시 실행하면 보낸다 — 상황판 열기
+WM_OPEN_BOARD_NOW = WM_APP + 0x33  # 화면 설정 옮기기가 끝나면 스레드가 보낸다 — 상황판 창을 메시지 루프 스레드에서 연다
+WM_UI_CHANGED = WM_APP + 0x34   # 페이지가 화면 정보(라이트/다크 · 바탕색)를 올리면 서버가 보낸다 — 창 제목줄 색 맞추기
 ID_OPEN, ID_NOTIFY, ID_AUTOSTART, ID_TEST, ID_AUTOUPD, ID_UPDCHK, ID_QUIT = 1, 2, 3, 4, 5, 6, 9
 
 # 알림에 보일 앱 이름 · 로고. Store 판 Python 으로 돌던 트레이는 그 패키지(Python)의 이름 · 로고로 알림이 갔다(Windows 알림 기록으로 확인)
@@ -507,6 +509,32 @@ def edge_path() -> str:
     return ""
 
 
+WEBVIEW_DATA = ROOT / "webview"  # 상황판 창(WebView2) 데이터 — 쿠키 · localStorage(11-19)
+
+
+def ui_info() -> dict:
+    """상황판 페이지가 올린 화면 정보(board/ui.json): mode · bg · fg · store. 없으면 {}."""
+    try:
+        d = json.loads((ROOT / "ui.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def ui_store_at() -> float:
+    """페이지가 화면 설정(store)을 올린 시각(board/ui.json mtime). 없으면 0."""
+    try:
+        p = ROOT / "ui.json"
+        return p.stat().st_mtime if "store" in json.loads(p.read_text(encoding="utf-8")) else 0.0
+    except (OSError, ValueError):
+        return 0.0
+
+
+def launch_edge(edge, url):
+    """예전 방식: Edge 앱 모드(--app) 창. WebView2 를 못 쓸 때(런타임 · 로더 없음)와, 옛 Edge 창의 화면 설정을 한 번 옮길 때만 쓴다."""
+    subprocess.Popen([edge, f"--app={url}"], creationflags=DETACHED_PROCESS, close_fds=True)
+
+
 def find_board_window():
     """제목이 정확히 'Session Orchestrator' 인 Edge(크로뮴) 창 = --app 창. 일반 탭 창은 제목 뒤에 ' - Microsoft Edge' 가 붙어 걸리지 않는다."""
     found = []
@@ -597,6 +625,8 @@ class Tray:
         self.last_open = 0.0
         self.mod = None  # 이 트레이가 품은 서버 모듈(입력 연결 코드를 만든다)
         self.paired = False  # 이번 실행에서 입력 열쇠를 준 창을 열었나(트레이가 다시 뜨면 열쇠가 바뀌어 예전 창은 못 보냄)
+        self._board_win = None  # 상황판 창(WebView2). False = 못 씀(예전 Edge 앱 모드로)
+        self.pending_sid = None
         self.first = True
         self._updating = False  # 새 버전 확인이 겹쳐 돌지 않게
         self.release_url = f"https://github.com/{REPO}/releases/latest"
@@ -679,6 +709,7 @@ class Tray:
             target = mod.board_live.watched_workspace(ROOT)  # 감시할 작업 폴더(board/config.json, 없으면 이 도구의 부모 폴더)
             mod.Handler.app = mod.AppSessions(target)  # 앱 세션 기록으로 판정 전 세션 짝짓기·보관 제외
             mod.Handler.tracker = mod.board_live.Tracker(target, days=7, interval=1.5)
+            mod.Handler.on_ui = lambda: PostMessageW(self.hwnd, WM_UI_CHANGED, 0, 0)  # 페이지 바탕색이 바뀌면 창 제목줄도
             mod.Handler.tracker.start()
         except Exception as e:  # 포트 · 파일 · 파이썬 버전 문제 무엇이든 이유를 남기고 다음 주기에 다시
             if httpd is not None:
@@ -942,28 +973,91 @@ class Tray:
             # 빈 「연결할 수 없음」 창 대신 이유를 알린다. 알림을 누르면 로그 파일이 열린다
             self.show_toast("상황판 서버를 못 띄웠어요", f"{self.status}\n누르면 로그(tray.log)가 열려요", "__log__")
             return
-        hwnd = find_board_window()
         can_pair = self.mod is not None and hasattr(self.mod, "pair_code")
-        if hwnd and (self.paired or not can_pair):
-            if IsIconic(hwnd):
-                ShowWindow(hwnd, 9)  # SW_RESTORE
-            SetForegroundWindow(hwnd)
+        win = self.board_window()
+        if win and win.alive():  # 이미 열린 상황판 창(이번 실행에서 만든 것 = 입력 열쇠 있음)
+            win.show()
             return
-        if hwnd:  # 트레이가 다시 뜨기 전에 연 창: 입력 열쇠가 바뀌어 직접 돌리는 세션에 못 보낸다 → 닫고 새로 연다
-            PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-        if can_pair:  # 입력 열쇠는 이 창에만: 한 번 쓰는 코드를 붙여 열면 서버가 쿠키로 준다(파일에는 안 남는다)
-            url = BASE + f"/pair?c={self.mod.pair_code()}" + (f"&s={sid}" if sid else "")
-            self.paired = True
-        else:
-            url = BASE + "/session-board.html" + (f"#s={sid}" if sid else "")
+        old = find_board_window()  # 예전 방식(Edge 앱 모드) 창
         edge = edge_path()
+        if win and edge and not ui_store_at() and not WEBVIEW_DATA.exists():
+            # 처음 한 번: 옛 Edge 창에 쌓인 화면 설정(테마 · 숨긴 카드 …)을 새 창으로 옮긴다. 옛 창은 옛 코드라 못 올리므로
+            # 닫고 Edge 로 한 번 다시 열어(새 페이지 코드가 설정을 board/ui.json 에 올림) 올라오면 닫은 뒤 새 창을 연다
+            threading.Thread(target=self.migrate_settings, args=(edge, old, sid), daemon=True).start()
+            return
+        if old:
+            PostMessageW(old, 0x0010, 0, 0)  # WM_CLOSE — 이제 새 창으로 연다
+        if win and win.open(self.board_url(sid, can_pair), placement=self.settings.get("board_window")):
+            self.apply_caption()
+            return
+        # WebView2 를 못 쓰면(런타임 · 로더 없음) 예전처럼 Edge 앱 모드
+        if old and (self.paired or not can_pair):
+            if IsIconic(old):
+                ShowWindow(old, 9)  # SW_RESTORE
+            SetForegroundWindow(old)
+            return
         try:
             if edge:
-                subprocess.Popen([edge, f"--app={url}"], creationflags=DETACHED_PROCESS, close_fds=True)
+                launch_edge(edge, self.board_url(sid, can_pair))
             else:
-                os.startfile(url)
+                os.startfile(BASE + "/session-board.html" + (f"#s={sid}" if sid else ""))
         except OSError as e:
             log("open:", e)
+
+    def board_window(self):
+        """상황판 창(WebView2, board_window.BoardWindow) — 이 트레이 프로세스가 만들고 그린다(11-19). 못 쓰면 None."""
+        if self._board_win is None:
+            try:
+                import board_window
+                self._board_win = board_window.BoardWindow(
+                    TITLE, icon=ICON, data_dir=WEBVIEW_DATA, local_prefix=BASE + "/", on_closed=self.board_closed, log=log)
+            except Exception as e:
+                log("board-window:", repr(e))
+                self._board_win = False
+        w = self._board_win
+        return w if w and w.available() else None
+
+    def board_closed(self, placement):
+        """상황판 창을 닫을 때: 위치 · 크기를 기억했다가 다음에 그 자리로 연다."""
+        self.settings["board_window"] = placement
+        save_settings(self.settings)
+
+    def apply_caption(self):
+        """창 제목줄을 페이지 바탕색에 맞춘다(페이지가 /api/ui 로 올린 bg · fg · mode)."""
+        w = self._board_win
+        if w:
+            d = ui_info()
+            w.set_caption(d.get("bg"), d.get("fg"), (d.get("mode") == "dark") if d.get("mode") else None)
+
+    def board_url(self, sid, can_pair):
+        if can_pair:  # 입력 열쇠는 이 창에만: 한 번 쓰는 코드를 붙여 열면 서버가 쿠키로 준다(파일에는 안 남는다)
+            self.paired = True
+            return BASE + f"/pair?c={self.mod.pair_code()}" + (f"&s={sid}" if sid else "")
+        return BASE + "/session-board.html" + (f"#s={sid}" if sid else "")
+
+    def migrate_settings(self, edge, old, sid):
+        """화면 설정 옮기기(한 번, 스레드): 옛 Edge 창 닫기 → Edge 로 다시 열기 → 페이지가 board/ui.json 에 올림(최대 25초) → 닫기 → 새 창."""
+        if old:
+            PostMessageW(old, 0x0010, 0, 0)
+            for _ in range(30):
+                time.sleep(0.1)
+                if not find_board_window():
+                    break
+        t0 = time.time()
+        try:
+            launch_edge(edge, BASE + "/session-board.html")
+        except OSError as e:
+            log("open:", e)
+        while time.time() - t0 < 25 and ui_store_at() < t0 - 1:
+            time.sleep(0.5)
+        log("board-window: 화면 설정 " + ("옮김" if ui_store_at() >= t0 - 1 else "못 받음(기본값으로)"))
+        time.sleep(0.5)
+        hwnd = find_board_window()
+        if hwnd:
+            PostMessageW(hwnd, 0x0010, 0, 0)
+        WEBVIEW_DATA.mkdir(parents=True, exist_ok=True)  # 다음부터는 옮기지 않는다
+        self.pending_sid = sid
+        PostMessageW(self.hwnd, WM_OPEN_BOARD_NOW, 0, 0)  # 창은 메시지 루프 스레드에서 만든다
 
     def menu(self):
         m = CreatePopupMenu()
@@ -1067,6 +1161,14 @@ class Tray:
                 return 0
             if msg == WM_OPEN_BOARD:
                 self.open_board()
+                return 0
+            if msg == WM_OPEN_BOARD_NOW:
+                self.last_open = 0.0
+                sid, self.pending_sid = self.pending_sid, None
+                self.open_board(sid)
+                return 0
+            if msg == WM_UI_CHANGED:
+                self.apply_caption()
                 return 0
             if msg == WM_DESTROY:
                 PostQuitMessage(0)

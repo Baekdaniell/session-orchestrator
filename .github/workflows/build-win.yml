@@ -45,6 +45,20 @@ jobs:
           )
           "@ | Set-Content -Encoding utf8 version_info.txt
           Get-Content version_info.txt
+      - name: WebView2 로더(상황판 창)
+        shell: pwsh
+        run: |
+          # 상황판 창(scripts/board_window.py)은 트레이가 직접 만든 창 안에 WebView2 로 페이지를 그린다(v1.4.9).
+          # 그때 쓰는 WebView2Loader.dll 을 Microsoft WebView2 SDK(NuGet)에서 꺼내 scripts/ 옆에 둔다. 서명이 유효하지 않으면 빌드를 멈춘다
+          $v = '1.0.4258.31'
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$v/microsoft.web.webview2.$v.nupkg" -OutFile wv2.zip
+          Expand-Archive wv2.zip -DestinationPath wv2
+          $dll = Get-ChildItem wv2 -Recurse -Filter WebView2Loader.dll | Where-Object { $_.DirectoryName -match 'win-x64' } | Select-Object -First 1
+          if (-not $dll) { throw "WebView2Loader.dll(x64) 을 못 찾음" }
+          Copy-Item $dll.FullName scripts/WebView2Loader.dll
+          $sig = Get-AuthenticodeSignature scripts/WebView2Loader.dll
+          "$($dll.FullName) · 서명 $($sig.Status) · $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') { throw "WebView2Loader.dll 서명이 유효하지 않음: $($sig.Status)" }
       - name: 폴더형 빌드
         run: >
           pyinstaller --noconfirm --onedir --windowed --contents-directory _internal

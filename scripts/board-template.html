@@ -568,6 +568,10 @@ td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .askq .op { display: block; margin-top: 2px; font-weight: 400; font-size: .92em; color: var(--fg-2); }
 .drawer .askbox { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
 .drawer .askbox.settled { border-left-color: var(--line); background: var(--panel); color: var(--fg-3); }
+/* 이 열에 있는 이유(11-19): 카드 아래 줄 상태 드롭다운 옆 · 상세 창 상태 칸 옆 */
+.arch-row .st-why { margin-right: auto; font-size: .78em; color: var(--fg-3); white-space: nowrap; }
+.arch-row .arch.st-pick:has(+ .st-why), :root:not([data-skin="flat"]) .arch-row .arch.st-pick:has(+ .st-why) { margin-right: 6px; }
+.drawer .d-why { margin-left: 8px; font-size: .82em; color: var(--fg-3); }
 .drawer .askbox .ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .drawer .askbox .ops button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); font-size: .85em; cursor: pointer; }
 .drawer .askbox .ops button:hover { border-color: var(--accent); }
@@ -683,7 +687,7 @@ body.tl-open { overflow: hidden; }
 :root[data-skin="primary"] .empty { border: 2px dashed var(--fg); border-radius: 12px; font-weight: 600; background: transparent; }
 :root[data-skin="primary"] :is(.lb, .flame) { border: 2px solid var(--fg); }
 :root[data-skin="primary"] .kb-board { gap: 20px; padding-top: 26px; }
-:root[data-skin="primary"] .kb-sub { margin-top: 8px; font-weight: 500; }
+:root[data-skin="primary"] .kb-sub { font-weight: 500; } :root[data-skin="primary"] .kb-title + .kb-sub { margin-top: 8px; }
 :root[data-skin="primary"] .kb-head .dot { border: 2px solid var(--fg); }
 :root[data-skin="primary"] :is(.kb-card, .card) .foot { border-top: 2px dashed var(--line); }
 :root[data-skin="primary"] .cover { border-bottom: 3px solid var(--fg); }
@@ -1057,7 +1061,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <div class="dh"><span id="d-sec"></span><span>·</span><span id="d-key"></span><button class="x" id="d-x" type="button" aria-label="닫기">✕</button></div>
   <div class="db">
     <div class="dt" id="d-title"></div>
-    <button type="button" class="st" id="d-st" aria-haspopup="menu" aria-expanded="false"></button>
+    <button type="button" class="st" id="d-st" aria-haspopup="menu" aria-expanded="false"></button><span class="d-why" id="d-why"></span>
     <div class="props2" id="d-props"></div>
     <div class="stale hidden" id="d-stale"></div>
     <h3>내가 할 일</h3>
@@ -1189,7 +1193,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const judged = rows.length ? rows[0].judged_at : '—';
   const FOOT = '상태는 각 세션의 마지막 대화로 추정한 값이에요. 관제 세션에서 /board 를 실행하면 이 파일이 다시 만들어지니 새로고침하세요. 정리 후보는 보관하지 않았고, 보관은 세션을 지목해 요청할 때만 해요.';
   // 로고 A(파비콘·트레이와 같은 모양). 제목 옆에 붙인다
-  const LOGO = '<svg class="logo" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#ff5e5b"/><g fill="#fff"><rect x="5" y="14" width="4" height="12" rx="2"/><rect x="11" y="7" width="4" height="19" rx="2"/><rect x="17" y="16" width="4" height="10" rx="2"/><rect x="23" y="10" width="4" height="16" rx="2"/></g></svg>';
+  // 페이지 안 로고 · 「Session Orchestrator」 제목은 뺐다(11-19): 창 제목줄(앱 창 · 탭)에 같은 로고 · 이름이 이미 있어 두 번 보였다
   const HELLO = '세션 이름을 누르면 Claude 앱에서 바로 열려요. 처음 한 번만 "열기"를 허용하면 돼요.';
 
   // 섹션(사이드바 그룹) → 태그 색. 표에 없는 섹션은 이름으로 다섯 색 중 하나를 고정으로 고른다(사람마다 섹션 이름이 달라서)
@@ -1318,6 +1322,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       d.addEventListener('click', () => removeSessions([r]));
       // 상태 드롭다운(11-19, Jira 식 — 11-18 「다음 열로 한 칸」 버튼을 바꿈). 도는 세션 · 판정 전 임시 카드(판정 행이 없음)에는 안 붙인다
       if (canMark(r)) row.append(statusPick(r));
+      row.append(el('span', 'st-why'));  // 이 열에 있는 이유(11-19) — 실시간 층(paintCards)이 채운다
       row.append(h, b, d);
       (node.tagName === 'TR' ? node.firstChild : node).append(row);
     }
@@ -1341,8 +1346,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     app.innerHTML = `
       <div class="cover"></div>
       <main class="page">
-        <div class="icon">${LOGO}</div>
-        <h1>Session Orchestrator</h1>
         <div class="props"><span>📅 판정 기준 <b class="judged"></b></span><span>🔁 갱신 <b>관제 세션에서 /board</b></span><span>🧭 영업일 3일 넘게 조용하면 정리 후보</span></div>
         <div class="callout"><span class="em">👋</span><div><p>내 답을 기다리는 세션이 <b class="n n-waiting"></b>개 있어요.</p><p class="hello"></p></div></div>
         <div class="kpis"></div>
@@ -1389,7 +1392,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const buildObsidian = (app) => {
     app.innerHTML = `
       <main class="ob-page">
-        <div class="brand">${LOGO}<div class="ob-title">Session Orchestrator</div></div>
         <div class="ob-props">
           <div class="ob-prop"><span class="k">📅 판정 기준</span><span class="v judged"></span></div>
           <div class="ob-prop"><span class="k">🔁 갱신</span><span class="v">관제 세션에서 /board</span></div>
@@ -1448,7 +1450,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const buildKanban = (app) => {
     app.innerHTML = `
       <header class="kb-top">
-        <div class="brand">${LOGO}<div><div class="kb-title">Session Orchestrator</div><div class="kb-sub">판정 기준 <b class="judged"></b> · 관제 세션에서 /board 로 갱신 · 영업일 3일 넘게 조용하면 정리 후보</div></div></div>
+        <div class="brand"><div><div class="kb-sub">판정 기준 <b class="judged"></b> · 관제 세션에서 /board 로 갱신 · 영업일 3일 넘게 조용하면 정리 후보</div></div></div>
         <div class="slot"></div>
       </header>
       <div class="kb-runwrap"></div>
@@ -1506,7 +1508,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const buildMinimal = (app) => {
     app.innerHTML = `
       <main class="mn-page">
-        <div class="brand">${LOGO}<h1 class="mn-title">Session Orchestrator</h1></div>
         <p class="mn-sub"></p>
         <div class="slot"></div>
         <div class="groups"></div>
@@ -1567,7 +1568,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     app.innerHTML = `
       <div class="rv-wrap">
         <aside class="rv-rail">
-          <div class="brand">${LOGO}<div><div class="rv-title">Session Orchestrator</div><div class="rv-meta">판정 기준 <b class="judged"></b><br>관제 세션에서 /board 로 갱신</div></div></div>
+          <div class="brand"><div><div class="rv-meta">판정 기준 <b class="judged"></b><br>관제 세션에서 /board 로 갱신</div></div></div>
           <nav class="rv-stats"></nav>
           <div class="slot"></div>
           <p class="rv-foot foot"></p>
@@ -1758,7 +1759,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const AX = window.__boardAxes, DEF = window.__boardDefaults;
   let pref = {};
   try { pref = window.__boardMigrate(JSON.parse(localStorage.getItem(AKEY) || '{}') || {}); } catch {}
-  const savePref = () => { pref.v = 2; try { localStorage.setItem(AKEY, JSON.stringify(pref)); } catch {} };
+  const savePref = () => { pref.v = 2; try { localStorage.setItem(AKEY, JSON.stringify(pref)); } catch {} pushUi(); };
   const mq = matchMedia('(prefers-color-scheme: dark)');
   const resolvedMode = () => (pref.mode === 'light' || pref.mode === 'dark') ? pref.mode : (mq.matches ? 'dark' : 'light');
   const cur = (axis) => AX[axis].includes(pref[axis]) ? pref[axis] : DEF[axis];
@@ -1817,6 +1818,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     $('#snippet').disabled = pref.snippet === false;
     window.__boardOn(root);
     if (drawn !== layout) renderPage(layout);
+    pushUi();  // 테마 · 라이트/다크가 바뀌면 창 제목줄 색도(시스템 모드가 바뀐 경우 포함)
     // 패널 표시를 맞춘다
     const match = PRESETS.find((p) => p.layout === layout && p.skin === skin && p.theme === theme);
     $$('#presets button').forEach((b) => {
@@ -1874,6 +1876,61 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     return data;
   };
+  // 화면 설정 동기화(11-19): 트레이가 상황판 창을 세오 전용 Edge 프로필로 연다(창 제목줄을 라이트/다크에 맞추려고).
+  // 이 브라우저의 localStorage(테마 · 숨긴 카드 · 접은 열 · 상세 창 너비 · 접기 …)와 라이트/다크를 서버(board/ui.json)에 올려 두고,
+  // 저장값이 하나도 없는 새 프로필에서 열리면 서버 값을 가져와 한 번 다시 연다. 트레이는 mode 로 제목줄 색(--force-dark-mode)을 정한다
+  const uiSnap = () => { const o = {}; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) o[k] = localStorage.getItem(k) || ''; } } catch {} return o; };
+  // 창 제목줄 색(11-19): 트레이가 만든 상황판 창(WebView2)은 제목줄을 이 색으로 칠한다 — 페이지 맨 위(머리 띠)의 실제 바탕색
+  const uiParse = (c) => {
+    let m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?/.exec(c || '');
+    if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]];
+    m = /color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?/.exec(c || '');
+    return m ? [m[1] * 255, m[2] * 255, m[3] * 255, m[4] === undefined ? 1 : +m[4]] : null;
+  };
+  const uiSolid = (n) => { for (; n; n = n.parentElement) { const v = uiParse(getComputedStyle(n).backgroundColor); if (v && v[3] > 0) return v; } return null; };
+  const uiColors = () => {
+    try {
+      const base = uiSolid(document.body) || [255, 255, 255, 1];
+      const top = uiSolid(document.elementFromPoint(innerWidth / 2, 2) || document.body) || base;
+      const rgb = (v) => 'rgb(' + v.slice(0, 3).map((x) => Math.round(x)).join(', ') + ')';
+      const bg = [0, 1, 2].map((i) => top[i] * top[3] + base[i] * (1 - top[3]));
+      const fg = uiParse(getComputedStyle(document.body).color);
+      return Object.assign({ bg: rgb(bg) }, fg ? { fg: rgb(fg) } : {});
+    } catch { return {}; }
+  };
+  const uiBody = () => JSON.stringify(Object.assign({ mode: document.documentElement.dataset.mode === 'dark' ? 'dark' : 'light', store: uiSnap() }, uiColors()));
+  let uiReady = false;  // 가져오기 확인이 끝나기 전엔 올리지 않는다(빈 값으로 서버 설정을 덮지 않게)
+  const uiSend = (keepalive) => {
+    if (!uiReady) return;
+    try { fetch(API + '/api/ui', { method: 'POST', keepalive: !!keepalive, headers: { 'Content-Type': 'application/json', 'X-Board-Token': TOKEN }, body: uiBody() }).catch(() => {}); } catch {}
+  };
+  (async () => {
+    let empty = true;
+    try { empty = localStorage.length === 0; } catch {}
+    if (empty && location.protocol === 'http:') {
+      let tried = false;
+      try { tried = !!sessionStorage.getItem('so-ui-imported'); } catch {}
+      if (!tried) {
+        try {
+          sessionStorage.setItem('so-ui-imported', '1');
+          const d = await api('/api/ui');
+          const st = d && d.store;
+          if (st && Object.keys(st).length) {
+            for (const [k, v] of Object.entries(st)) localStorage.setItem(k, v);
+            location.reload();
+            return;
+          }
+        } catch {}
+      }
+    }
+    uiReady = true;
+    uiSend(false);
+  })();
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') uiSend(true); });
+  addEventListener('pagehide', () => uiSend(true));
+  // 설정을 바꿀 때 올린다. 첫 화면 그리기(applyPref)가 이 줄보다 먼저 부르므로 let 변수를 쓰면 선언 전 접근(TDZ)으로 시작이 깨진다
+  // (11-19 시험: 페이지가 설정 · 바탕색을 한 번도 안 올림) → 타이머는 함수 속성에 둔다
+  function pushUi() { clearTimeout(pushUi.t); pushUi.t = setTimeout(() => uiSend(false), 800); }
   // 세션 링크(claude://…/local_…)는 서버가 Windows 로 연다. Edge 앱 창은 claude:// 를 Claude 앱에 넘기지 못해
   // 「지워 ↗」 같은 승인 링크 · 세션 이름을 눌러도 반응이 없었다(11-11). 서버가 꺼져 있으면 예전처럼 브라우저가 연다
   document.addEventListener('click', (e) => {
@@ -2767,6 +2824,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (r.judged === '실행 중' && e && e.state === 'idle') return '완료';
     return r.judged;
   };
+  // 열에 있는 이유(11-19): 열(분류)은 「작업자가 할 일」 기준이고, 상세 창의 실시간 「세션 동작」은 세션이 지금 하는 일이라
+  // 둘이 달라 보일 수 있다(세션은 쉬는데 할 일이 남아 내 답 대기 등). 카드 · 상세 창에 이유를 한 마디로 붙인다
+  function whyOf(r, e) {
+    const s = effStatus(r, e);
+    if (s === '실행 중') return !e ? '판정 때 도는 중' : /^백그라운드/.test(e.label || '') ? '백그라운드 기다림' : e.state === 'waiting_tool' ? '도구 응답 기다림' : '도는 중';
+    if (r.marked_at && !(e && e.ts && e.ts > r.marked_at)) return '직접 옮김';
+    if (s === '내 답 대기') return e && e.state === 'asking' && !(e.ask && e.ask.weak) ? '질문 대기' : r.todo && r.todo !== '없음' ? '할 일 남음' : '판정';
+    if (s === '완료') return e && e.state === 'idle' && e.uts && e.uts * 1000 > mdTs(r.judged_at) ? '답한 뒤 쉼' : '할 일 없음';
+    if (s === '정리 후보') return '3일 넘게 조용';
+    return '';
+  }
   // 작업자가 상태 드롭다운으로 「완료」·「정리 후보」로 옮긴 세션(그 뒤 안 움직임)은 남은 질문을 답할 일로 보지 않는다(11-19):
   // 카드의 질문 띠를 빼고 「쉼」으로, 상세 창엔 흐린 칸으로만 남긴다. 앱 사이드바 표시는 관제가 같이 맞춘다(mark 요청)
   const viewOf = (sid, e) => {
@@ -2793,6 +2861,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     const maxOut = Math.max(1, ...Object.values(d.sessions).map((x) => x.today.output_tokens));
     for (const node of items) {
       const e = viewOf(node.dataset.sid, d.sessions[node.dataset.sid]) || (node.dataset.cli && (d.unmapped || []).find((u) => u.cli === node.dataset.cli));
+      const why = node.querySelector('.st-why');
+      if (why) {
+        const rr = rows.find((x) => sidOf(x) === node.dataset.sid);
+        const w = rr ? whyOf(rr, e) : '';
+        if (why.textContent !== w) { why.textContent = w; why.title = w ? '이 열에 있는 이유 — 열은 「작업자가 할 일」 기준, 상세 창 「세션 동작」은 세션이 지금 하는 일' : ''; }
+      }
       let box = node.querySelector(':scope .live') || node.querySelector('.live');
       const host0 = node.tagName === 'TR' ? node.firstChild : node;
       // 이 카드에 보일 값이 그대로면 손대지 않는다(다시 그리는 도중 누른 클릭이 사라지지 않게, 11-11)
@@ -2865,6 +2939,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     const e = drawerSid ? viewOf(drawerSid, liveData && liveData.sessions && liveData.sessions[drawerSid])
       : liveData && (liveData.unmapped || []).find((u) => u.cli === drawerCli);
     paintDrawerBg(e);
+    const dr = drawerSid ? rows.find((x) => sidOf(x) === drawerSid) : null;  // 제목 아래 상태 칸 옆: 이 열에 있는 이유
+    const dw = $('#d-why'), wt = dr ? whyOf(dr, e) : '';
+    if (dw && dw.textContent !== (wt ? '· ' + wt : '')) dw.textContent = wt ? '· ' + wt : '';
     // 보이는 값이 그대로면 다시 그리지 않는다. 다른 세션이 움직일 때마다(2초쯤) 이 칸을 통째로 다시 그려
     // 선택지 버튼·「↗」 링크가 누르는 도중 바뀌어 클릭이 사라졌다
     const sig = JSON.stringify(e ? [drawerSid, e.state, e.label, e.last, e.text, e.model, e.today && e.today.output_tokens, e.today && sumIn(e.today),
@@ -2880,7 +2957,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     const st = el('span'); st.append(el('i', 'ldot ' + e.state), txt(' ' + (e.state === 'idle' ? '쉬는 중' : e.state === 'working' ? '도는 중' : e.state === 'asking' ? '질문하고 기다림' : '응답 없음')
       + (e.settledTo ? ' · 상황판에서 「' + e.settledTo + '」로 옮김' : '')));
     st.style.display = 'inline-flex'; st.style.alignItems = 'center'; st.style.gap = '6px';
-    kv('상태', st);
+    kv('세션 동작', st);  // 11-19: 「상태」라 열(분류)과 헷갈렸다 — 이건 세션이 지금 하는 일
     if (e.label) kv('지금', e.label);
     kv('마지막 기록', e.last || '—');
     if (e.text) kv('마지막 문장', e.text);

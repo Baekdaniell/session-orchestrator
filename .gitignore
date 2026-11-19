@@ -8,3 +8,6 @@ __pycache__/
 /dist/
 # 앱 아이콘 (build/mac/make_icns.py 가 빌드 때 만든다)
 /build/mac/*.icns
+
+# 상황판 창용 WebView2 로더 — 빌드(build-win.yml)가 Microsoft WebView2 SDK 에서 받아 넣는다
+/scripts/WebView2Loader.dll

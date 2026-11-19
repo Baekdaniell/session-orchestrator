@@ -20,6 +20,8 @@ API
   POST /api/summarize           → {id, state:'queued'}            (본문 {session_id, session})  카드 상세의 「요약 만들기」
   POST /api/delete              → {id, state:'queued'}            (본문 {session_ids:[…≤25], sessions:[…]})  정리 후보 삭제(앱 승인 카드를 거침)
   POST /api/map                 → {id, state:'queued'}            (본문 {cli, title})  판정 전 새 세션 카드의 「세션 찾기」 — 관제가 사이드바 세션과 짝지어 행을 붙인다
+  GET  /api/ui · POST /api/ui   → 화면 설정(localStorage 전부) · 라이트/다크를 board/ui.json 에 둔다(본문 {mode?, store?}). 상황판 창을
+                                  세오 전용 Edge 프로필로 열면서 설정을 옮기고 창 제목줄 색을 정하는 데 쓴다(11-19)
   POST /api/mark                → {ok, id}                        (본문 {session_id, status, session})  카드 상태 드롭다운 — 판정 행은 서버가 바로 옮기고,
                                                                      앱 사이드바 표시(완료 표시 · 안 읽음 점)는 mark 요청으로 관제가 맞춘다
   GET  /api/live?t=토큰         → 실시간 스냅숏(세션별 상태·도구·마지막 문장·토큰, 오늘 토큰 합계) — board_live.Tracker
@@ -90,11 +92,21 @@ def pair_code(ttl=60) -> str:
     return c
 
 
+def read_ui(root) -> dict:
+    """board/ui.json — 페이지가 올린 화면 설정 {mode, store, at}. 없거나 깨졌으면 {}."""
+    try:
+        d = json.loads((Path(root) / "ui.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def _take_pair(c) -> bool:
     with _PAIR_LOCK:
         t = _PAIR.pop(str(c or ""), None)
     return bool(t) and t >= time.time()
 RID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
+COLOR = re.compile(r"^rgba?\([0-9., ]{5,40}\)$")  # 페이지가 올리는 바탕색 · 글자색(getComputedStyle 값)
 CLI = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 MAX_TEXT = 4000
 STATES = ("done", "working", "inbox")
@@ -173,6 +185,7 @@ class Handler(SimpleHTTPRequestHandler):
     root: Path = Path("board")
     tracker = None
     app = None  # AppSessions
+    on_ui = None  # 트레이가 넣는 알림(화면 정보가 바뀌면 상황판 창 제목줄 색을 맞춘다)
     _map = (None, {}, {}, frozenset())  # (board-sessions.json mtime, {cli id: 사이드바 세션 id}, {세션 name: 세션 id}, {판정 행의 세션 id})
     _arch = (None, frozenset())  # (board-archived.json mtime, {보관·삭제한 세션 cli id})
 
@@ -435,10 +448,12 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(200, {"state": "queued" if state == "inbox" else "working"})
             return self._json(404, {"state": "unknown"})
         if u.path in ("/api/live", "/api/stream", "/api/timeline", "/api/heatmap", "/api/transcript", "/api/host/state", "/api/host/list",
-                      "/api/host/paired", "/api/doc", "/api/doc/list", "/api/doc/recent"):
+                      "/api/host/paired", "/api/doc", "/api/doc/list", "/api/doc/recent", "/api/ui"):
             qs = parse_qs(u.query)
             if not (self._auth(qs.get("t", [""])[0]) or self._auth()):  # 쿼리 t 또는 X-Board-Token 헤더
                 return self._json(403, {"error": "token"})
+            if u.path == "/api/ui":
+                return self._json(200, read_ui(self.root))
             if u.path == "/api/transcript":
                 return self._transcript(qs)
             if u.path.startswith("/api/doc"):
@@ -664,6 +679,38 @@ class Handler(SimpleHTTPRequestHandler):
                     subprocess.Popen(["open", url])
             except OSError as e:
                 return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True})
+        if u.path == "/api/ui":
+            # 페이지의 화면 설정(localStorage 전부) · 라이트/다크 · 바탕색(11-19). 트레이가 상황판 창(WebView2)의 제목줄을 바탕색에 맞추고,
+            # 새 창(저장소가 따로)으로 처음 열 때 옛 Edge 창의 설정을 옮기는 데 쓴다. board/ui.json(로컬, 리포 밖)
+            mode = body.get("mode")
+            store = body.get("store")
+            colors = {k: body.get(k) for k in ("bg", "fg") if body.get(k) is not None}
+            if any(not (isinstance(v, str) and COLOR.match(v)) for v in colors.values()):
+                return self._json(400, {"error": "bad color"})
+            if mode not in (None, "dark", "light") or (store is not None and not (
+                    isinstance(store, dict) and len(store) <= 64 and all(isinstance(k, str) and isinstance(v, str) for k, v in store.items()))):
+                return self._json(400, {"error": "bad request"})
+            with _MARK_LOCK:
+                d = read_ui(self.root)
+                changed = bool(mode and d.get("mode") != mode) or any(d.get(k) != v for k, v in colors.items())
+                if mode:
+                    d["mode"] = mode
+                d.update(colors)
+                # 빈 설정으로 덮어쓰지 않는다: 새 프로필 창이 가져오기 전에 숨겨지며 빈 값을 올리면 옮길 설정이 지워진다(11-19 시험)
+                if store is not None and (store or not d.get("store")):
+                    d["store"] = store
+                d["at"] = int(time.time())
+                p = self.root / "ui.json"
+                tmp = p.with_name(p.name + ".tmp")
+                tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+                tmp.replace(p)
+            cb = type(self).on_ui  # 인스턴스로 꺼내면 메서드로 묶여 인자가 하나 더 간다(11-19 시험에서 조용히 실패)
+            if changed and cb:  # 트레이가 품은 서버면 창 제목줄 색을 바로 맞추게 알린다
+                try:
+                    cb()
+                except Exception:
+                    pass
             return self._json(200, {"ok": True})
         if u.path == "/api/mark":
             # 카드·상세 창의 상태 드롭다운: 작업자가 직접 열을 옮긴다(11-18 버튼 → 11-19 드롭다운).
