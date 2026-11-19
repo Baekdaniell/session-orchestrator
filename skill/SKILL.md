@@ -85,7 +85,7 @@ description: 흩어진 Claude Code 세션 전체의 현황을 판정해 로컬 �
 
 ## 5. 보관 · 삭제
 
-판정 자체는 아무것도 보관·삭제하지 않는다. **작업자가 상황판 카드의 「보관」·「삭제」·「전부 보관」·「전부 삭제」를 누른 것이 지목**이고, 그 요청만 6절대로 처리한다. 「숨기기」는 상황판 화면에서만 가리는 것이라 관제가 할 일이 없다. 상태 드롭다운(열 옮기기)도 서버가 판정 행의 `status` 를 바로 바꾸고 다시 그리므로 관제가 할 일이 없다(행에 `marked_at` 이 붙는다, 3절).
+판정 자체는 아무것도 보관·삭제하지 않는다. **작업자가 상황판 카드의 「보관」·「삭제」·「전부 보관」·「전부 삭제」를 누른 것이 지목**이고, 그 요청만 6절대로 처리한다. 「숨기기」는 상황판 화면에서만 가리는 것이라 관제가 할 일이 없다. 상태 드롭다운(열 옮기기)은 서버가 판정 행의 `status` 를 바로 바꾸고 다시 그린다(행에 `marked_at` 이 붙는다, 3절). 관제는 같이 오는 `mark` 요청으로 Claude 앱 사이드바 표시만 맞춘다(6절).
 
 ## 6. 상황판 요청 처리(릴레이)
 
@@ -101,6 +101,7 @@ description: 흩어진 Claude Code 세션 전체의 현황을 판정해 로컬 �
 - **`archive`** → `session_ids` 마다 `mcp__ccd_session_mgmt__archive_session`(관제 자신은 건너뜀). 끝나면 그 행들을 빼고, 행의 `cli_id` 를 `H/board/board-archived.json`(문자열 배열)에 더한 뒤 렌더 → `done <id> --result "보관 N건"`.
 - **`delete`** → `mcp__ccd_session_mgmt__delete_session` 에 `session_ids`(25개 이하)와 `reason: "상황판에서 작업자가 삭제 요청"`. **`force_worktree_cleanup` 은 절대 넘기지 않는다.** 앱 승인 카드를 한 번 더 거친다. 지워진 행만 빼고 `cli_id` 를 `board-archived.json` 에 더한 뒤 렌더. 거절이면 `--error --result "승인 거절"`.
 - **`map`**(카드의 「세션 찾기」) → 요청의 `cli`·`title` 로 `list_sessions` 에서 같은 제목의 세션을 찾아 행을 붙이고(`cli_id`=`cli`, 상태는 실시간 상태대로) 렌더 → `done <id> --result "짝지음: <제목>"`. 못 찾으면 `--error --result "사이드바에 없음"`.
+- **`mark`**(카드의 상태 드롭다운) → 판정 행은 서버가 이미 옮겼다(행·렌더는 손대지 않는다). Claude 앱 사이드바 표시만 그 상태에 맞춘다: `완료`·`정리 후보` → `mcp__ccd_sidebar__mark_completed`(질문 대기·실패 점을 완료로) 다음 `mcp__ccd_sidebar__set_unread` `unread: false`, `내 답 대기` → `set_unread` `unread: true`(파란 점). 관제 자신은 건너뛴다. `done <id> --result "앱 표시: <상태>"`. 세션 대화의 질문 자체는 지우거나 대신 답하지 않는다(승인일 수 있다).
 
 처리 끝나면 **대기를 다시 건다.**
 

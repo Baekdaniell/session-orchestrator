@@ -552,6 +552,7 @@ td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .askq { display: block; align-self: stretch; margin: 0 0 6px; padding: 6px 9px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: color-mix(in srgb, var(--accent) 72%, var(--fg)); font-size: .85em; font-weight: 600; line-height: 1.4; }
 .askq .op { display: block; margin-top: 2px; font-weight: 400; font-size: .92em; color: var(--fg-2); }
 .drawer .askbox { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.drawer .askbox.settled { border-left-color: var(--line); background: var(--panel); color: var(--fg-3); }
 .drawer .askbox .ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .drawer .askbox .ops button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); font-size: .85em; cursor: pointer; }
 .drawer .askbox .ops button:hover { border-color: var(--accent); }
@@ -2136,7 +2137,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (btn) btn.disabled = true;
     const st = $('.link-state');
     try {
-      await api('/api/mark', { session_id: sid, status });
+      await api('/api/mark', { session_id: sid, status, session: r.session });  // 서버가 열을 옮기고, 앱 사이드바 표시는 관제에 넘긴다
       if (st) st.textContent = '「' + r.session + '」 → ' + status + ' ✓';
       location.reload();
     } catch (e) {
@@ -2716,6 +2717,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (r.judged === '실행 중' && e && e.state === 'idle') return '완료';
     return r.judged;
   };
+  // 작업자가 상태 드롭다운으로 「완료」·「정리 후보」로 옮긴 세션(그 뒤 안 움직임)은 남은 질문을 답할 일로 보지 않는다(11-19):
+  // 카드의 질문 띠를 빼고 「쉼」으로, 상세 창엔 흐린 칸으로만 남긴다. 앱 사이드바 표시는 관제가 같이 맞춘다(mark 요청)
+  const viewOf = (sid, e) => {
+    if (!e || e.state !== 'asking' || !sid) return e;
+    const r = rows.find((x) => sidOf(x) === sid);
+    const settled = r && r.marked_at && !(e.ts && e.ts > r.marked_at) && (r.judged === '완료' || r.judged === '정리 후보');
+    return settled ? { ...e, state: 'idle', label: '', ask: null, leftAsk: e.ask, settledTo: r.judged } : e;
+  };
   const paintCards = () => {
     const d = liveData;
     const bar = $('#livebar');
@@ -2733,7 +2742,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (!d || !d.sessions) return;
     const maxOut = Math.max(1, ...Object.values(d.sessions).map((x) => x.today.output_tokens));
     for (const node of items) {
-      const e = d.sessions[node.dataset.sid] || (node.dataset.cli && (d.unmapped || []).find((u) => u.cli === node.dataset.cli));
+      const e = viewOf(node.dataset.sid, d.sessions[node.dataset.sid]) || (node.dataset.cli && (d.unmapped || []).find((u) => u.cli === node.dataset.cli));
       let box = node.querySelector(':scope .live') || node.querySelector('.live');
       const host0 = node.tagName === 'TR' ? node.firstChild : node;
       // 이 카드에 보일 값이 그대로면 손대지 않는다(다시 그리는 도중 누른 클릭이 사라지지 않게, 11-11)
@@ -2803,14 +2812,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const paintDrawerLive = () => {
     const box = $('#d-live');
     if (!box || (!drawerSid && !drawerCli)) return;
-    const e = drawerSid ? liveData && liveData.sessions && liveData.sessions[drawerSid]
+    const e = drawerSid ? viewOf(drawerSid, liveData && liveData.sessions && liveData.sessions[drawerSid])
       : liveData && (liveData.unmapped || []).find((u) => u.cli === drawerCli);
     paintDrawerBg(e);
     // 보이는 값이 그대로면 다시 그리지 않는다. 다른 세션이 움직일 때마다(2초쯤) 이 칸을 통째로 다시 그려
     // 선택지 버튼·「↗」 링크가 누르는 도중 바뀌어 클릭이 사라졌다
     const sig = JSON.stringify(e ? [drawerSid, e.state, e.label, e.last, e.text, e.model, e.today && e.today.output_tokens, e.today && sumIn(e.today),
       e.tokens && e.tokens.output_tokens, e.tokens && sumIn(e.tokens), e.ask || null, e.ask ? sentAsk.get(drawerSid + '|' + e.ask.text) || '' : '',
-      e.ask ? openedAsk.get(drawerSid + '|' + e.ask.text) || '' : '']
+      e.ask ? openedAsk.get(drawerSid + '|' + e.ask.text) || '' : '', e.leftAsk ? e.leftAsk.text : '', e.settledTo || '']
       : [drawerSid, !!liveData]);
     if (box.dataset.sig === sig) return;
     box.dataset.sig = sig;
@@ -2818,7 +2827,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     if (!e) { box.append(el('span', 'nosum', liveData ? '이 세션의 대화 파일을 아직 못 찾았어요(다음 판정 때 짝지어요)' : '실시간 연결이 없어요')); return; }
     const g = el('div', 'lgrid');
     const kv = (k, v) => { g.append(el('span', 'k', k)); const x = el('span'); x.append(typeof v === 'string' ? txt(v) : v); g.append(x); };
-    const st = el('span'); st.append(el('i', 'ldot ' + e.state), txt(' ' + (e.state === 'idle' ? '쉬는 중' : e.state === 'working' ? '도는 중' : e.state === 'asking' ? '질문하고 기다림' : '응답 없음')));
+    const st = el('span'); st.append(el('i', 'ldot ' + e.state), txt(' ' + (e.state === 'idle' ? '쉬는 중' : e.state === 'working' ? '도는 중' : e.state === 'asking' ? '질문하고 기다림' : '응답 없음')
+      + (e.settledTo ? ' · 상황판에서 「' + e.settledTo + '」로 옮김' : '')));
     st.style.display = 'inline-flex'; st.style.alignItems = 'center'; st.style.gap = '6px';
     kv('상태', st);
     if (e.label) kv('지금', e.label);
@@ -2828,6 +2838,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     kv('전체 토큰', '출력 ' + fmtTok(e.tokens.output_tokens) + ' · 입력+캐시 ' + fmtTok(sumIn(e.tokens)));
     if (e.model) kv('모델', e.model);
     box.append(g);
+    if (e.leftAsk) {  // 「완료」·「정리 후보」로 옮긴 세션에 남은 질문 — 선택지 없이 흐리게만
+      const a = el('div', 'askbox settled');
+      a.append(el('b', '', '❓ ' + e.leftAsk.text));
+      a.append(el('div', 'nosum', '「' + e.settledTo + '」로 옮겨서 답할 일로 보지 않아요. 질문은 앱 대화에 그대로 남아 있어요. 답하려면 Claude 앱에서 이 세션을 여세요'));
+      box.append(a);
+    }
     if (e.state === 'asking' && e.ask) {  // 질문과 선택지. 선택지를 누르면 바로 그 세션에 보낸다
       const a = el('div', 'askbox');
       a.append(el('b', '', '❓ ' + e.ask.text));

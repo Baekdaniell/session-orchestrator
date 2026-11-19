@@ -20,6 +20,8 @@ API
   POST /api/summarize           → {id, state:'queued'}            (본문 {session_id, session})  카드 상세의 「요약 만들기」
   POST /api/delete              → {id, state:'queued'}            (본문 {session_ids:[…≤25], sessions:[…]})  정리 후보 삭제(앱 승인 카드를 거침)
   POST /api/map                 → {id, state:'queued'}            (본문 {cli, title})  판정 전 새 세션 카드의 「세션 찾기」 — 관제가 사이드바 세션과 짝지어 행을 붙인다
+  POST /api/mark                → {ok, id}                        (본문 {session_id, status, session})  카드 상태 드롭다운 — 판정 행은 서버가 바로 옮기고,
+                                                                     앱 사이드바 표시(완료 표시 · 안 읽음 점)는 mark 요청으로 관제가 맞춘다
   GET  /api/live?t=토큰         → 실시간 스냅숏(세션별 상태·도구·마지막 문장·토큰, 오늘 토큰 합계) — board_live.Tracker
   GET  /api/stream?t=토큰       → 같은 스냅숏을 SSE 로 밀어 줌(바뀔 때마다, 최소 2초 간격). EventSource 는 헤더를 못 붙여 토큰을 쿼리로 받는다
   GET  /api/timeline?hours=N    → 세션 타임라인(활동 구간·메시지 이벤트), N=1~168
@@ -646,8 +648,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(500, {"error": str(e)})
             return self._json(200, {"ok": True})
         if u.path == "/api/mark":
-            # 카드·상세 창의 상태 드롭다운: 작업자가 직접 열을 옮긴다(관제를 거치지 않음, 11-18 버튼 → 11-19 드롭다운).
-            # 판정 행만 바꾸고 다시 그린다. 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다(marked_at)
+            # 카드·상세 창의 상태 드롭다운: 작업자가 직접 열을 옮긴다(11-18 버튼 → 11-19 드롭다운).
+            # 판정 행은 서버가 바로 바꾸고 다시 그린다. 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다(marked_at).
+            # Claude 앱 사이드바 표시(완료 표시 · 안 읽음 점)는 서버가 못 바꾸므로 관제에 mark 요청을 같이 넘긴다(11-19)
             sid = str(body.get("session_id", ""))
             status = str(body.get("status", ""))
             if not SID.match(sid) or status not in MARKABLE:
@@ -656,7 +659,10 @@ class Handler(SimpleHTTPRequestHandler):
                 hit = self._mark(sid, status)
             except Exception as e:
                 return self._json(500, {"error": str(e)[:200]})
-            return self._json(200 if hit else 404, {"ok": hit} if hit else {"error": "상황판에 그 세션 행이 없어요"})
+            if not hit:
+                return self._json(404, {"error": "상황판에 그 세션 행이 없어요"})
+            rid = self._enqueue({"type": "mark", "session_id": sid, "session": str(body.get("session", ""))[:200], "status": status})
+            return self._json(200, {"ok": True, "id": rid})
         if u.path == "/api/summarize":
             sid = str(body.get("session_id", ""))
             if not SID.match(sid):
@@ -684,6 +690,11 @@ class Handler(SimpleHTTPRequestHandler):
             req = {"type": "message", "session_id": sid, "session": str(body.get("session", ""))[:200], "text": text}
         else:
             return self._json(404, {"error": "not found"})
+        rid = self._enqueue(req)
+        return self._json(200, {"id": rid, "state": "queued"})
+
+    def _enqueue(self, req) -> str:
+        """관제가 처리할 요청을 inbox 에 떨군다. 요청 id 를 돌려준다."""
         rid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
         req.update({"id": rid, "at": time.strftime("%Y-%m-%d %H:%M:%S")})
         inbox = self.root / "inbox"
@@ -691,7 +702,7 @@ class Handler(SimpleHTTPRequestHandler):
         tmp = inbox / (rid + ".json.tmp")  # 쓰다 만 파일을 watcher 가 집지 않게 .tmp 로 쓰고 이름을 바꾼다
         tmp.write_text(json.dumps(req, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(inbox / (rid + ".json"))
-        return self._json(200, {"id": rid, "state": "queued"})
+        return rid
 
 
 class Server(ThreadingHTTPServer):
