@@ -530,6 +530,22 @@ def ui_store_at() -> float:
         return 0.0
 
 
+def edge_zoom(host) -> float:
+    """Edge(평소 프로필)가 그 호스트에 걸어 둔 확대/축소 배율(1.0 = 100%). 없으면 0. 설정 파일에서 그 호스트 값만 읽는다."""
+    base = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Edge" / "User Data"
+    for pref in [base / "Default" / "Preferences"] + sorted(base.glob("Profile */Preferences")):
+        try:
+            zl = json.loads(pref.read_text(encoding="utf-8")).get("partition", {}).get("per_host_zoom_levels", {})
+        except (OSError, ValueError, AttributeError):
+            continue
+        for part in zl.values() if isinstance(zl, dict) else []:
+            v = part.get(host) if isinstance(part, dict) else None
+            lv = v.get("zoom_level") if isinstance(v, dict) else v
+            if isinstance(lv, (int, float)):
+                return 1.2 ** lv  # 크로뮴 배율 단계: 1.2 의 거듭제곱
+    return 0.0
+
+
 def launch_edge(edge, url):
     """예전 방식: Edge 앱 모드(--app) 창. WebView2 를 못 쓸 때(런타임 · 로더 없음)와, 옛 Edge 창의 화면 설정을 한 번 옮길 때만 쓴다."""
     subprocess.Popen([edge, f"--app={url}"], creationflags=DETACHED_PROCESS, close_fds=True)
@@ -1010,12 +1026,27 @@ class Tray:
             try:
                 import board_window
                 self._board_win = board_window.BoardWindow(
-                    TITLE, icon=ICON, data_dir=WEBVIEW_DATA, local_prefix=BASE + "/", on_closed=self.board_closed, log=log)
+                    TITLE, icon=ICON, data_dir=WEBVIEW_DATA, local_prefix=BASE + "/", on_closed=self.board_closed, log=log,
+                    zoom=self.board_zoom(), on_zoom=self.board_zoom_changed)
             except Exception as e:
                 log("board-window:", repr(e))
                 self._board_win = False
         w = self._board_win
         return w if w and w.available() else None
+
+    def board_zoom(self):
+        """상황판 창 배율(1.0 = 100%). 처음엔 예전 Edge 창의 127.0.0.1 배율을 가져온다(11-19: 90% 로 보던 걸 새 창이 100% 로 열었다)."""
+        z = self.settings.get("board_zoom")
+        if z is None:
+            z = edge_zoom("127.0.0.1") or 1.0
+            self.settings["board_zoom"] = round(z, 3)
+            save_settings(self.settings)
+            log(f"board-window: 예전 Edge 창 배율 {round(z * 100)}% 를 가져옴")
+        return z
+
+    def board_zoom_changed(self, z):
+        self.settings["board_zoom"] = round(float(z), 3)
+        save_settings(self.settings)
 
     def board_closed(self, placement):
         """상황판 창을 닫을 때: 위치 · 크기를 기억했다가 다음에 그 자리로 연다."""

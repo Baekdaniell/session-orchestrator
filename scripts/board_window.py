@@ -12,13 +12,15 @@
 
 COM 은 ctypes 로 직접 부른다(pythonnet · pywebview 없이). vtable 순서는 WebView2.h(SDK 1.0.x) 기준:
   ICoreWebView2Environment: 3 CreateCoreWebView2Controller
-  ICoreWebView2Controller : 4 put_IsVisible · 6 put_Bounds · 12 MoveFocus · 23 NotifyParentWindowPositionChanged · 24 Close · 25 get_CoreWebView2
+  ICoreWebView2Controller : 4 put_IsVisible · 6 put_Bounds · 7 get_ZoomFactor · 8 put_ZoomFactor · 9 add_ZoomFactorChanged · 12 MoveFocus
+                            23 NotifyParentWindowPositionChanged · 24 Close · 25 get_CoreWebView2
   ICoreWebView2           : 5 Navigate · 7 add_NavigationStarting · 44 add_NewWindowRequested
   NavigationStartingEventArgs: 3 get_Uri · 8 put_Cancel   NewWindowRequestedEventArgs: 3 get_Uri · 6 put_Handled
 """
 import ctypes
 import ctypes.wintypes as W
 import os
+import time
 from pathlib import Path
 
 HRESULT = ctypes.c_long
@@ -154,13 +156,19 @@ class BoardWindow:
 
     CLASS = "SessionOrchestratorBoard"
 
-    def __init__(self, title, icon=None, data_dir=None, local_prefix="", open_external=None, on_closed=None, log=print, loader=None):
+    def __init__(self, title, icon=None, data_dir=None, local_prefix="", open_external=None, on_closed=None, log=print, loader=None,
+                 zoom=None, on_zoom=None):
         self.title = title
         self.icon = str(icon) if icon else None
         self.data_dir = str(data_dir) if data_dir else None
         self.local_prefix = local_prefix          # 이 주소로 시작하는 곳만 창 안에서 연다(나머지는 기본 브라우저 · 앱으로)
         self.open_external = open_external or (lambda u: os.startfile(u))
         self.on_closed = on_closed                # 창을 닫을 때 placement dict 를 넘긴다(트레이가 설정에 저장)
+        # 배율(확대/축소, 1.0 = 100%). Ctrl+휠 · Ctrl+−/+ 로 바꾸면 on_zoom 으로 알려 트레이가 기억한다(11-19: 예전 Edge 창은 90% 였는데
+        # 새 창이 100% 로 열려 글자가 커 보였다 — WebView2 배율은 창을 닫으면 사라지므로 직접 기억해 다시 건다)
+        self.zoom = zoom
+        self.on_zoom = on_zoom
+        self.t_open = 0.0
         self.log = log
         self.loader = find_loader(loader)
         self.hwnd = None
@@ -194,6 +202,7 @@ class BoardWindow:
             self.log("board-window: 로더를 못 읽음:", e)
             return False
         CoInitializeEx(None, 2)  # COINIT_APARTMENTTHREADED(이미 했으면 S_FALSE)
+        self.t_open = time.time()
         self._create_window(placement)
         self.pending_url = url
         done = _Callback(DONE, self._env_ready)
@@ -307,7 +316,7 @@ class BoardWindow:
     def _ctrl_ready(self, this, hr, ctrl):
         try:
             if hr != S_OK or not ctrl or not self.alive():
-                self.log(f"board-window: 컨트롤러 실패 hr=0x{hr & 0xFFFFFFFF:08x}")
+                self.log(f"board-window: 컨트롤러 실패 hr=0x{hr & 0xFFFFFFFF:08x} · {time.time() - self.t_open:.1f}초 · 창 " + ("있음" if self.alive() else "닫힘(만드는 도중 닫으면 0x80004004)"))
                 return S_OK
             _addref(ctrl)
             self.ctrl = ctrl
@@ -321,13 +330,30 @@ class BoardWindow:
             _method(self.wv, 7, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))(nav.ptr, ctypes.byref(tok))
             _method(self.wv, 44, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))(neww.ptr, ctypes.byref(tok))
             self._fit()
+            if self.zoom and 0.25 <= float(self.zoom) <= 5 and abs(float(self.zoom) - 1.0) > 0.001:
+                _method(ctrl, 8, ctypes.c_double)(float(self.zoom))  # put_ZoomFactor
+            zc = _Callback(EVENT, self._on_zoom)
+            self._keep.append(zc)
+            _method(ctrl, 9, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))(zc.ptr, ctypes.byref(tok))  # add_ZoomFactorChanged
             _method(ctrl, 4, W.BOOL)(1)
             _method(ctrl, 12, ctypes.c_int)(0)  # MoveFocus(PROGRAMMATIC)
             if self.pending_url:
                 self.navigate(self.pending_url)
                 self.pending_url = None
+            self.log(f"board-window: 열림 {time.time() - self.t_open:.1f}초" + (f" · 배율 {round(float(self.zoom) * 100)}%" if self.zoom else ""))
         except Exception as e:
             self.log("board-window ctrl:", repr(e))
+        return S_OK
+
+    def _on_zoom(self, this, sender, args):
+        try:
+            z = ctypes.c_double()
+            if self.ctrl and _method(self.ctrl, 7, ctypes.POINTER(ctypes.c_double))(ctypes.byref(z)) == S_OK:
+                self.zoom = z.value
+                if self.on_zoom:
+                    self.on_zoom(z.value)
+        except Exception as e:
+            self.log("board-window zoom:", repr(e))
         return S_OK
 
     def _local(self, uri):
