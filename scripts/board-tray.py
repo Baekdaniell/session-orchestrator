@@ -869,7 +869,10 @@ class Tray:
                 continue
             mk = r.get("marked_at") or 0
             if mk and ((live.get(sid) or {}).get("ts") or 0) <= mk:
-                continue  # 작업자가 카드 버튼으로 옮긴 열(완료·정리 후보, 11-18) — 그 뒤 다시 움직이기 전까진 세지 않는다
+                # 작업자가 카드 상태 드롭다운으로 옮긴 열(11-18 버튼 → 11-19 드롭다운) — 그 뒤 다시 움직이기 전까진 그 열 그대로
+                if st == "내 답 대기":
+                    eff.add(sid)
+                continue
             jt = md_ts(r.get("judged_at"))
             fresh = ((live.get(sid) or {}).get("ts") or 0) > jt  # 판정 뒤에 다시 움직임
             replied = ((live.get(sid) or {}).get("uts") or 0) > jt  # 판정 뒤에 작업자가 직접 답함

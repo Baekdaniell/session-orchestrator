@@ -96,7 +96,7 @@ RID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 CLI = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 MAX_TEXT = 4000
 STATES = ("done", "working", "inbox")
-MARKABLE = ("완료", "정리 후보")  # 카드 버튼으로 작업자가 직접 옮길 수 있는 열
+MARKABLE = ("내 답 대기", "완료", "정리 후보")  # 카드 상태 드롭다운으로 작업자가 직접 옮길 수 있는 열(실행 중은 실시간 상태라 제외)
 _MARK_LOCK = threading.Lock()
 STATIC = {"/session-board.html", "/board-snippet.css"}  # 이 둘만 정적으로 내준다
 
@@ -646,7 +646,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(500, {"error": str(e)})
             return self._json(200, {"ok": True})
         if u.path == "/api/mark":
-            # 카드의 「✅ 완료로」·「🧹 정리 후보로」: 작업자가 직접 열을 옮긴다(관제를 거치지 않음, 11-18).
+            # 카드·상세 창의 상태 드롭다운: 작업자가 직접 열을 옮긴다(관제를 거치지 않음, 11-18 버튼 → 11-19 드롭다운).
             # 판정 행만 바꾸고 다시 그린다. 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다(marked_at)
             sid = str(body.get("session_id", ""))
             status = str(body.get("status", ""))

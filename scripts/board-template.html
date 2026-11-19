@@ -285,8 +285,21 @@ body.linking [data-list] > [data-sid]:not(.rel) { opacity: .35; transition: opac
 .arch[disabled] { opacity: .5; cursor: progress; }
 .arch.del:hover, .drawer .acts button.del:hover { background: var(--danger); color: var(--on-red); border-color: var(--danger); }
 .arch.ghost { border-style: dashed; }
-/* 열 옮기기(✅ 완료로 · 🧹 정리 후보로): 지우는 버튼이 아니라 빨강 대신 초록 */
-.arch.mark:hover, :root:not([data-skin="flat"]) .arch.mark:hover { background-color: color-mix(in srgb, var(--c-green) 16%, var(--panel)); color: var(--fg); border-color: color-mix(in srgb, var(--c-green) 55%, var(--line)); }
+/* 상태 드롭다운(11-19, Jira 식): 카드 왼쪽 끝·상세 창 제목 아래의 상태 칸을 누르면 바꿀 열이 펼쳐진다. 지우는 버튼이 아니라 빨강 hover 대신 상태 색 */
+.st-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--col, var(--fg-3)); }
+.st-caret { font-size: .85em; opacity: .7; }
+.arch.st-pick, :root:not([data-skin="flat"]) .arch.st-pick { margin-right: auto; color: color-mix(in srgb, var(--col) 70%, var(--fg)); background-color: color-mix(in srgb, var(--col) 12%, var(--panel)); border-color: color-mix(in srgb, var(--col) 40%, var(--line)); }
+.arch.st-pick:hover, :root:not([data-skin="flat"]) .arch.st-pick:hover { color: var(--fg); background-color: color-mix(in srgb, var(--col) 24%, var(--panel)); border-color: color-mix(in srgb, var(--col) 60%, var(--line)); }
+.drawer button.st { border: 0; font-family: inherit; cursor: default; }
+.drawer button.st.pick { cursor: pointer; }
+.drawer button.st.pick:hover { background: color-mix(in srgb, var(--col) 30%, var(--panel)); }
+.st-menu { position: fixed; z-index: 1000; min-width: 150px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); display: flex; flex-direction: column; gap: 2px; }
+.st-menu .st-head { padding: 4px 8px 2px; font-size: .74em; font-weight: 700; color: var(--fg-3); }
+.st-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--fg); font: inherit; font-size: .86em; font-weight: 600; text-align: left; cursor: pointer; }
+.st-item:hover, .st-item:focus-visible { background: color-mix(in srgb, var(--col) 16%, var(--panel)); outline: none; }
+.st-item[disabled] { cursor: default; color: var(--fg-3); }
+.st-item[disabled]:hover { background: transparent; }
+.st-item .st-cur { margin-left: auto; font-size: .82em; font-weight: 600; }
 .bulk { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
 .kb-col .bulk { padding: 0 6px; }
 .arch-row { gap: 6px; }
@@ -1021,7 +1034,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <div class="dh"><span id="d-sec"></span><span>·</span><span id="d-key"></span><button class="x" id="d-x" type="button" aria-label="닫기">✕</button></div>
   <div class="db">
     <div class="dt" id="d-title"></div>
-    <span class="st" id="d-st"></span>
+    <button type="button" class="st" id="d-st" aria-haspopup="menu" aria-expanded="false"></button>
     <div class="props2" id="d-props"></div>
     <div class="stale hidden" id="d-stale"></div>
     <h3>내가 할 일</h3>
@@ -1278,8 +1291,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       b.addEventListener('click', () => archive([r]));
       const d = el('button', 'arch del', '🗑 삭제'); d.type = 'button'; d.title = '대화·워크트리까지 영구 삭제(되돌릴 수 없음, Claude 앱 승인 필요)';
       d.addEventListener('click', () => removeSessions([r]));
-      // 다음 열로 한 칸(내 답 대기 → 완료 → 정리 후보, 11-18). 도는 세션 · 판정 전 임시 카드(판정 행이 없음)에는 안 붙인다
-      if (!r.synthetic && markNext(r.status)) row.append(markBtn(r, markNext(r.status), 'arch mark'));
+      // 상태 드롭다운(11-19, Jira 식 — 11-18 「다음 열로 한 칸」 버튼을 바꿈). 도는 세션 · 판정 전 임시 카드(판정 행이 없음)에는 안 붙인다
+      if (canMark(r)) row.append(statusPick(r));
       row.append(h, b, d);
       (node.tagName === 'TR' ? node.firstChild : node).append(row);
     }
@@ -2057,21 +2070,69 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     location.reload();
   };
   const unhideAll = () => { hiddenMap = {}; try { localStorage.removeItem(HKEY); } catch {} location.reload(); };
-  // ── 열 옮기기(작업자가 직접, 11-18): 끝낸 세션이 내 답 대기에 남거나, 다 본 완료를 정리 후보로 넘길 때.
+  // ── 상태 바꾸기(작업자가 직접): 11-18 「다음 열로 한 칸」 버튼 → 11-19 Jira 식 드롭다운(버튼을 옆으로 늘어놓지 않게).
+  //    카드 왼쪽 끝과 상세 창 제목 아래의 상태 칸을 누르면 내 답 대기 · 완료 · 정리 후보가 펼쳐진다(실행 중은 실시간 상태라 못 고름).
   //    서버가 판정 행만 바꾸고 다시 그린다(관제를 거치지 않음). 세션이 그 뒤 다시 움직이면 실시간 상태가 이긴다
   //    카드는 첫 그리기 때 만들어지므로(이 줄보다 먼저 돈다) 아래는 함수 선언으로 — const 면 첫 그리기에서 TDZ 오류
-  function markNext(status) { return { '내 답 대기': '완료', '완료': '정리 후보' }[status] || ''; }
-  function markBtn(r, status, cls) {
-    const label = { '완료': '✅ 완료로', '정리 후보': '🧹 정리 후보로' }[status];
-    const b = el('button', cls, label); b.type = 'button';
-    b.title = status === '완료' ? '이 세션은 끝났다고 보고 완료 열로 옮겨요. 세션이 다시 움직이면 실시간 상태를 따라가요'
-      : '다 본 세션을 정리 후보 열로 옮겨요. 보관·삭제는 따로 눌러야 해요';
-    b.addEventListener('click', () => markRow(r, status, b));
+  function markStates() { return ['내 답 대기', '완료', '정리 후보']; }
+  function statusCol(s) { return { '내 답 대기': 'var(--accent)', '실행 중': 'var(--c-blue)', '완료': 'var(--c-green)', '정리 후보': 'var(--fg-3)' }[s] || 'var(--fg-3)'; }
+  function canMark(r) { return !!sidOf(r) && !r.synthetic && markStates().includes(r.status); }
+  function statusPick(r) {
+    const b = el('button', 'arch st-pick'); b.type = 'button';
+    b.style.setProperty('--col', statusCol(r.status));
+    b.append(el('i', 'st-dot'), txt(r.status), el('span', 'st-caret', '▾'));
+    b.title = '눌러서 상태 바꾸기 — 세션이 그 뒤 다시 움직이면 실시간 상태를 따라가요';
+    b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', (e) => { e.stopPropagation(); toggleStatusMenu(r, b); });
     return b;
   }
+  let stMenu = null;  // 펼친 메뉴 { node, btn } — 떠 있는 동안 카드 다시 그리기를 미룬다(busy)
+  function closeStatusMenu() {
+    if (!stMenu) return;
+    stMenu.btn.setAttribute('aria-expanded', 'false');
+    stMenu.node.remove();
+    stMenu = null;  // 미뤄 둔 다시 그리기는 1.5초 주기 타이머가 이어서 한다
+  }
+  function toggleStatusMenu(r, btn) {
+    const same = stMenu && stMenu.btn === btn;
+    closeStatusMenu();
+    if (same) return;
+    const m = el('div', 'st-menu'); m.setAttribute('role', 'menu');
+    m.append(el('div', 'st-head', '상태 바꾸기'));
+    markStates().forEach((s) => {
+      const it = el('button', 'st-item'); it.type = 'button'; it.setAttribute('role', 'menuitem');
+      it.style.setProperty('--col', statusCol(s));
+      it.append(el('i', 'st-dot'), txt(s));
+      if (s === r.status) { it.disabled = true; it.append(el('span', 'st-cur', '지금')); }
+      else it.addEventListener('click', () => { closeStatusMenu(); markRow(r, s, btn); });
+      m.append(it);
+    });
+    document.body.append(m);
+    const rc = btn.getBoundingClientRect();
+    const x = Math.max(8, Math.min(rc.left, innerWidth - m.offsetWidth - 8));
+    let y = rc.bottom + 4;
+    if (y + m.offsetHeight > innerHeight - 8) y = Math.max(8, rc.top - m.offsetHeight - 4);
+    m.style.left = x + 'px'; m.style.top = y + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+    stMenu = { node: m, btn };
+    m.querySelector('.st-item:not([disabled])')?.focus();
+  }
+  // 바깥 클릭 · 스크롤 · 창 크기 바꿈이면 닫는다. Esc 는 메뉴만 닫고(상세 창은 그대로), ↑↓ 로 항목을 옮긴다
+  document.addEventListener('click', (e) => { if (stMenu && !stMenu.node.contains(e.target)) closeStatusMenu(); });
+  document.addEventListener('scroll', (e) => { if (stMenu && !stMenu.node.contains(e.target)) closeStatusMenu(); }, true);
+  window.addEventListener('resize', () => closeStatusMenu());
+  document.addEventListener('keydown', (e) => {
+    if (!stMenu) return;
+    if (e.key === 'Escape') { e.stopPropagation(); const b = stMenu.btn; closeStatusMenu(); b.focus(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const its = [...stMenu.node.querySelectorAll('.st-item:not([disabled])')];
+    const i = its.indexOf(document.activeElement);
+    its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length]?.focus();
+  }, true);
   async function markRow(r, status, btn) {
     const sid = sidOf(r);
-    if (!sid || (status !== '완료' && status !== '정리 후보')) return;
+    if (!sid || !markStates().includes(status)) return;
     if (btn) btn.disabled = true;
     const st = $('.link-state');
     try {
@@ -2501,7 +2562,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   let resizedAt = 0;
   document.addEventListener('click', (e) => {
     if (drawer.classList.contains('hidden') || drawer.contains(e.target) || Date.now() - resizedAt < 400) return;
-    if (e.target.closest('[data-list] > [data-sid], [data-list] > [data-cli], #sheet, #gear, .tl, #composer')) return;
+    if (e.target.closest('[data-list] > [data-sid], [data-list] > [data-cli], #sheet, #gear, .tl, #composer, .st-menu')) return;
     closeDrawer();
   });
   // 상세 창 너비: 왼쪽 가장자리를 끌어 바꾸고 이 브라우저에 기억. 두 번 누르면 기본(580px)
@@ -2539,7 +2600,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     $('#d-sec').textContent = r.section;
     $('#d-key').textContent = sid ? sid.slice(6, 14) : drawerCli.slice(0, 8);
     $('#d-title').textContent = r.session;
+    // 제목 아래 상태 칸 = Jira 식 상태 드롭다운(11-19). 실행 중 · 판정 전 임시 카드는 누를 수 없는 표시만
     const st = $('#d-st'); st.textContent = r.status; st.style.setProperty('--col', STATUS_COL[r.status] || 'var(--fg-3)');
+    const canSt = canMark(r);
+    st.disabled = !canSt; st.classList.toggle('pick', canSt);
+    if (canSt) st.append(el('span', 'st-caret', ' ▾'));
+    st.title = canSt ? '눌러서 상태 바꾸기 — 세션이 그 뒤 다시 움직이면 실시간 상태를 따라가요' : r.status === '실행 중' ? '실행 중은 실시간 상태라 바꿀 수 없어요' : '';
+    st.onclick = canSt ? (e) => { e.stopPropagation(); toggleStatusMenu(r, st); } : null;
     const props = $('#d-props'); props.innerHTML = '';
     prop(props, '섹션', tag(r.section));
     prop(props, '마지막 활동', lastOf(r));
@@ -2594,8 +2661,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       }
     }
     if (sid) {
-      // 열 옮기기: 지금 열과 실행 중을 뺀 둘(완료 · 정리 후보) 중 다른 쪽
-      if (!r.synthetic && r.status !== '실행 중') ['완료', '정리 후보'].filter((s) => s !== r.status).forEach((s) => acts.append(markBtn(r, s, '')));
+      // 상태 바꾸기는 제목 아래 상태 칸(드롭다운)으로 옮겼다(11-19)
       const hb = el('button', '', '🙈 숨기기'); hb.type = 'button'; hb.addEventListener('click', () => hideSessions([r])); acts.append(hb);
       const ab = el('button', '', '🗄 보관'); ab.type = 'button'; ab.addEventListener('click', () => archive([r])); acts.append(ab);
       const db = el('button', 'del', '🗑 삭제'); db.type = 'button'; db.addEventListener('click', () => removeSessions([r])); acts.append(db);
@@ -2636,7 +2702,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const sumIn = (t) => (t.input_tokens || 0) + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0);
   // 다시 그리기를 미루는 때: 입력 · 상세 창 · 검색 · 칩 필터 중, 그리고 카드에 마우스를 올려 둔 동안(누르려는 순간 카드가 바뀌지 않게)
   const busy = () => !composer.classList.contains('hidden') || !drawer.classList.contains('hidden') || $('#q')?.value || $$('.chip[aria-pressed="true"]').length
-    || !!document.querySelector('[data-list] > :hover');
+    || !!document.querySelector('[data-list] > :hover') || !!stMenu;  // 상태 드롭다운이 펼쳐진 동안도
   const effStatus = (r, e) => {
     if (e && (e.state === 'working' || e.state === 'waiting_tool')) return '실행 중';
     // 작업자가 카드 버튼으로 직접 옮긴 열(11-18)은 세션이 그 뒤 다시 움직이기 전까지 그대로(남은 질문 띠가 있어도)
