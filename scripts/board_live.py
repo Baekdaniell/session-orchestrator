@@ -29,10 +29,21 @@ SPAWN_TOOLS = ("mcp__ccd_session__start_session", "mcp__ccd_session__hand_off_to
 # 백그라운드 작업. 턴을 끝내고 백그라운드 명령 결과를 기다리는 세션은 도는 중으로 본다
 BG_TOOLS = ("Bash", "PowerShell")
 BG_START_RE = re.compile(r"running in background with ID: ([A-Za-z0-9_-]+)")
+# 11-19: 백그라운드 명령만 세서, Monitor 감시 · 백그라운드 에이전트로 기다리는 세션이 「완료」로 보였다 → 둘도 센다
+MON_START_RE = re.compile(r"Monitor started \(task ([A-Za-z0-9_-]+)(?:, expires in (\d+)\s*(s|m|h))?")
+AGENT_START_RE = re.compile(r"Async agent launched successfully.*?agentId: ([A-Za-z0-9_-]+)", re.S)
+AGENT_TOOLS = ("Agent", "Task")
 BG_NOTE_RE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)  # 끝남 알림 한 덩어리
-BG_FIELD_RE = {k: re.compile(rf"<{k}>(.*?)</{k}>", re.S) for k in ("task-id", "status", "summary")}
-BG_WINDOW = 90 * 60     # 완료 알림 없이 사라진 작업(앱 재시작·중단)은 이만큼 지나면 무시
-BG_IGNORE = ("board-queue.py wait",)  # 관제 세션이 늘 걸어 두는 요청 대기는 일이 아니다
+BG_FIELD_RE = {k: re.compile(rf"<{k}>(.*?)</{k}>", re.S) for k in ("task-id", "status", "summary", "event")}
+# 완료 알림 없이 사라진 작업(앱 재시작 · 중단)을 걸러 내는 법(11-19):
+# - 그 세션의 claude.exe 프로세스를 볼 수 있으면(Windows) 프로세스가 살아 있고 작업보다 먼저 떴을 때만 산 작업. 시간 창은 BG_MAX(안전장치)
+# - 못 보면(macOS) 종류별 시간 창: 명령 90분 · 에이전트 6시간 · 감시는 만료 시각까지
+#   (11-19 실측: 실행 끝을 기다리는 백그라운드 명령이 3시간째 돌고 있었는데 90분 창에 걸려 「완료」로 보였다)
+BG_WINDOW = 90 * 60
+BG_AGENT_WINDOW = 6 * 3600
+BG_MAX = 24 * 3600
+PROC_UNKNOWN = -1.0     # FileState.proc: 프로세스 정보를 모름(이때만 시간 창). None = 프로세스 없음, 그 밖 = 프로세스 시작 시각
+BG_IGNORE = ("board-queue.py wait", " queue wait")  # 관제 세션이 늘 걸어 두는 요청 대기는 일이 아니다(배포판은 SessionOrchestrator.exe queue wait)
 # 마지막 문장이 이런 꼴이면 작업자에게 묻고 멈춘 것으로 추정(물음표 없이 "…답해 주시면 바로 커밋하겠습니다." 같은 경우, 11-10 실측)
 ASK_TAIL_RE = re.compile(r"[?？]$|(답해|알려|골라|정해|확인해|말씀해) ?(주시면|주세요|주십시오)")
 # 다른 세션(관제 포함)이 send_message 로 보낸 말. 대화 파일엔 isMeta 사용자 줄로 남는다
@@ -210,7 +221,8 @@ class FileState:
         self.last_end_ts = None      # 본 대화의 마지막 턴 종료(end_turn) 시각
         self.events = []             # 이 세션이 다른 세션에 보낸 메시지·띄운 세션 {kind, to, summary, ts}
         self.spawn_wait = {}         # start_session 호출 id → 이벤트 (결과에서 새 세션 id 를 채움)
-        self.bg = {}                 # 아직 안 끝난 백그라운드 작업 id → {ts, desc, cmd}
+        self.bg = {}                 # 아직 안 끝난 백그라운드 작업 id → {ts, desc, cmd, kind(cmd·monitor·agent), win(시간 창)}
+        self.proc = PROC_UNKNOWN     # 이 대화를 잡은 claude.exe 시작 시각(Tracker.snapshot 이 채움)
         self.bg_cmd = {}             # run_in_background 도구 호출 id → {desc, cmd}(결과에서 작업 id 를 받는다)
         self.bg_done = []            # 최근 끝난 작업 {id, desc, status, summary, ts}(최대 6개)
         self.user_ts = None          # 작업자가 직접 친 마지막 말(시스템 알림 제외) 시각 — 판정 뒤 답했는지 보려고
@@ -294,7 +306,12 @@ class FileState:
                         summ = inp.get("summary") or _first_line(inp.get("message") or inp.get("content") or "", 60)
                         self.events.append({"kind": "msg", "to": str(to), "summary": str(summ)[:80], "ts": ts})
                     elif name in BG_TOOLS and inp.get("run_in_background") and b.get("id"):
-                        self.bg_cmd[b["id"]] = {"cmd": str(inp.get("command") or ""), "desc": str(inp.get("description") or "")[:120]}
+                        self.bg_cmd[b["id"]] = {"kind": "cmd", "cmd": str(inp.get("command") or ""), "desc": str(inp.get("description") or "")[:120]}
+                    elif name == "Monitor" and b.get("id"):
+                        self.bg_cmd[b["id"]] = {"kind": "monitor", "cmd": "", "desc": "감시 · " + str(inp.get("description") or "")[:110],
+                                                "persistent": bool(inp.get("persistent"))}
+                    elif name in AGENT_TOOLS and b.get("id"):  # 결과가 「Async agent launched」일 때만 백그라운드로 친다
+                        self.bg_cmd[b["id"]] = {"kind": "agent", "cmd": "", "desc": "에이전트 · " + str(inp.get("description") or "")[:110]}
                     elif name == "TaskStop":
                         self._bg_end(str(inp.get("task_id") or inp.get("shell_id") or ""), "stopped", "TaskStop 으로 중단", ts)
                     elif name == "mcp__ccd_turn__wrap_up" and inp.get("ask"):
@@ -330,12 +347,19 @@ class FileState:
                         self.spawn_wait.pop(b["tool_use_id"])["to"] = found.group(0)
             if isinstance(content, list) and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
                 kind = "tool_result"
-                for b in content:  # 백그라운드로 띄운 명령의 작업 id
+                for b in content:  # 백그라운드로 띄운 명령 · 감시 · 에이전트의 작업 id
                     if isinstance(b, dict) and b.get("tool_use_id") in self.bg_cmd:
                         c = self.bg_cmd.pop(b["tool_use_id"])
-                        found = BG_START_RE.search(json.dumps(b.get("content"), ensure_ascii=False))
+                        raw = json.dumps(b.get("content"), ensure_ascii=False)
+                        kind = c.get("kind", "cmd")
+                        found = (MON_START_RE if kind == "monitor" else AGENT_START_RE if kind == "agent" else BG_START_RE).search(raw)
                         if found and not any(x in c["cmd"] for x in BG_IGNORE):
-                            self.bg[found.group(1)] = {"ts": ts or time.time(), "desc": c["desc"] or _first_line(c["cmd"], 80), "cmd": c["cmd"][:200]}
+                            win = BG_AGENT_WINDOW if kind == "agent" else BG_WINDOW
+                            if kind == "monitor":  # 만료 시각까지(지속 감시는 BG_MAX)
+                                n, unit = found.group(2), found.group(3)
+                                win = BG_MAX if c.get("persistent") or not n else int(n) * {"s": 1, "m": 60, "h": 3600}[unit] + 120
+                            self.bg[found.group(1)] = {"ts": ts or time.time(), "desc": c["desc"] or _first_line(c["cmd"], 80), "cmd": c["cmd"][:200],
+                                                       "kind": kind, "win": win}
                 # AskUserQuestion 에 작업자가 답하면 그 결과가 tool_result 로 온다
                 if self.ask and self.ask["kind"] == "ask_user" and any(isinstance(b, dict) and b.get("tool_use_id") == self.ask["id"] for b in content):
                     self.ask = None
@@ -371,7 +395,26 @@ class FileState:
     def _bg_notes(self, text, ts):
         for blk in BG_NOTE_RE.findall(text):
             f = {k: (r.search(blk).group(1).strip() if r.search(blk) else "") for k, r in BG_FIELD_RE.items()}
-            self._bg_end(f["task-id"], f["status"] or "completed", f["summary"], ts)
+            t = self.bg.get(f["task-id"])
+            # 감시(Monitor)는 이벤트마다 알림이 온다. 상태(status)가 있거나 「[Monitor …]」(만료 · 종료) 알림일 때만 끝
+            if t and t.get("kind") == "monitor" and not f["status"] and not f["event"].startswith("[Monitor"):
+                continue
+            self._bg_end(f["task-id"], f["status"] or "completed", f["summary"] or f["event"], ts)
+
+    def _bg_live(self, now):
+        """아직 도는 백그라운드 작업 [(id, 작업)]. 프로세스를 볼 수 있으면 프로세스 기준, 못 보면 종류별 시간 창(위 BG_* 주석)."""
+        out = []
+        for k, t in self.bg.items():
+            age = now - t["ts"]
+            if self.proc == PROC_UNKNOWN:
+                ok = age < t.get("win", BG_WINDOW)
+            elif self.proc is None:  # 이 대화를 잡은 claude.exe 가 없음 → 백그라운드 작업도 같이 사라졌다
+                ok = False
+            else:  # 프로세스가 작업보다 나중에 떴으면(재시작) 그 작업은 죽은 것
+                ok = t["ts"] >= self.proc - 5 and age < (min(t["win"], BG_MAX) if t.get("kind") == "monitor" else BG_MAX)
+            if ok:
+                out.append((k, t))
+        return out
 
     def _bg_end(self, tid, status, summary, ts):
         t = self.bg.pop(tid, None)
@@ -382,7 +425,7 @@ class FileState:
     def background(self, now):
         """상세 창용: 아직 안 끝난 작업(창 안) + 한 시간 안에 끝난 작업."""
         run = [{"id": k, "desc": v["desc"], "age": int(now - v["ts"]), "at": datetime.fromtimestamp(v["ts"], KST).strftime("%H:%M")}
-               for k, v in self.bg.items() if now - v["ts"] < BG_WINDOW]
+               for k, v in self._bg_live(now)]
         done = [{"id": d["id"], "desc": d["desc"], "status": d["status"], "summary": d["summary"], "ago": int(now - d["ts"])}
                 for d in self.bg_done if now - d["ts"] < 3600]
         return sorted(run, key=lambda x: x["age"]), done[::-1]
@@ -414,9 +457,10 @@ class FileState:
         if q:
             return "asking", ("질문(추정): " if q["kind"] == "text" else "질문: ") + q["text"], age
         if lm["kind"] == "assistant" and lm["stop"] in ("end_turn", "stop_sequence", "max_tokens", "refusal"):
-            live_bg = [t for t in self.bg.values() if now - t["ts"] < BG_WINDOW]
-            if live_bg:  # 턴은 끝났지만 백그라운드 명령 결과를 기다리는 중 = 사이드바에선 진행 중
-                return "working", f"백그라운드 작업 {len(live_bg)}개 기다림", age
+            live_bg = self._bg_live(now)
+            if live_bg:  # 턴은 끝났지만 백그라운드 명령 · 감시 · 에이전트 결과를 기다리는 중 = 사이드바에선 진행 중
+                oldest = int((now - min(t["ts"] for _, t in live_bg)) // 60)
+                return "working", f"백그라운드 작업 {len(live_bg)}개 기다림" + (f" · {oldest // 60}시간 {oldest % 60}분째" if oldest >= 60 else f" · {oldest}분째"), age
             return "idle", "턴 끝남", age
         if age < 60:
             if lm["kind"] == "assistant" and tool:
@@ -606,7 +650,7 @@ class Tracker(threading.Thread):
                 c["min"] = round(c["min"])
         return {"days": labels, "cells": cells}
 
-    def snapshot(self, mapping, names=None, exclude=()):
+    def snapshot(self, mapping, names=None, exclude=(), procs=None):
         """mapping: cli id → 사이드바 세션 id. 짝이 없는 최근 세션은 unmapped 로.
         exclude: 보관·삭제한 세션의 cli id(board/board-archived.json). 토큰 합계엔 넣되 카드로는 안 낸다(11-10 보관한 세션이 임시 카드로 되살아난 일)."""
         now = time.time()
@@ -616,6 +660,9 @@ class Tracker(threading.Thread):
         running = 0
         with self.lock:
             items = list(self.files.values())
+        # procs: 대화 id → 그 대화를 잡은 claude.exe 시작 시각(board_host.cli_procs). None 이면 모름 → 시간 창으로 판단
+        for fs in items:
+            fs.proc = PROC_UNKNOWN if procs is None else (procs[fs.cli] or PROC_UNKNOWN) if fs.cli in procs else None
         for fs in items:
             total, day = fs.sums(today)
             for k in TOKEN_KEYS:

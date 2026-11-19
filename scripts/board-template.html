@@ -89,6 +89,9 @@ button, input, select { font: inherit; color: inherit; }
 
 /* 도구줄: 검색 + 섹션 칩 (디자인마다 자리만 다르다) */
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+/* 브라우저 기본 부품(스크롤바 · 입력칸 · 창 제목줄)도 라이트/다크를 따라가게(11-19: 다크인데 스크롤바 · 제목줄이 밝았다) */
+:root[data-mode="dark"] { color-scheme: dark; }
+:root[data-mode="light"] { color-scheme: light; }
 .search { flex: 1 1 220px; min-width: 180px; padding: 7px 12px 7px 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239b9a97' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") 11px center no-repeat; color: var(--fg); font-size: .93em; outline: none; }
 .search:focus { border-color: var(--accent); }
 .chip { padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg-2); font-size: .87em; cursor: pointer; transition: background .12s, color .12s; }
@@ -964,6 +967,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
         root.style.setProperty(k, 1.05 / (L + .05) >= (L + .05) / (LD + .05) ? '#ffffff' : DARK);
       }
       root.style.setProperty('--accent-fg', root.style.getPropertyValue('--on-accent') || '#ffffff');
+      // 창 제목줄(앱 창)을 페이지 바탕색에 맞춘다(11-19: 다크인데 제목줄만 밝아 상단이 따로 놀았다). color-scheme 은 CSS 에서
+      const bg = rgb('--bg');
+      if (bg) {
+        let tc = document.querySelector('meta[name="theme-color"]');
+        if (!tc) { tc = document.createElement('meta'); tc.name = 'theme-color'; document.head.appendChild(tc); }
+        tc.content = 'rgb(' + bg.map(Math.round).join(', ') + ')';
+      }
       probe.remove();
     };
     window.__boardAxes = AX; window.__boardDefaults = DEF; window.__boardMigrate = migrate; window.__boardOn = on;

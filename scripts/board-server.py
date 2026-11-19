@@ -294,7 +294,7 @@ class Handler(SimpleHTTPRequestHandler):
     def _live(self):
         if not self.tracker:
             return {"ready": False}
-        snap = self.tracker.snapshot(self.mapping(), self.names(), self.archived())
+        snap = self.tracker.snapshot(self.mapping(), self.names(), self.archived(), procs=self._procs())
         # 판정 행에 없지만 앱 기록으로 짝지어진 세션(판정 전 새 세션) → 페이지가 링크 있는 임시 카드로 그린다
         self._board_map()
         recs = self.app_records()
@@ -305,6 +305,24 @@ class Handler(SimpleHTTPRequestHandler):
         # 판정 행인데 앱 기록에 없거나(삭제) 보관된 세션 → 페이지·트레이가 뺀다. 기록을 못 읽으면(빈 결과) 아무것도 빼지 않는다
         snap["gone"] = [sid for sid in self._map[3] if sid not in recs or recs[sid]["archived"]] if recs else []
         return snap
+
+    @classmethod
+    def _procs(cls):
+        """대화 id → 그 대화를 잡은 claude.exe 시작 시각. 백그라운드 작업이 아직 사는지 가린다(11-19).
+        앱 기록상 한 세션의 대화 id 가 둘이면(cliSessionId · lastAssistantCliSessionId) 어느 쪽 프로세스든 둘 다에 붙인다.
+        Windows 밖이거나 못 읽으면 None(모름 → 실시간 층이 시간 창으로 판단)."""
+        try:
+            procs = board_host.cli_procs()
+        except Exception:
+            return None
+        if procs is None:
+            return None
+        for rec in cls.app_records().values():
+            hit = [procs[c] for c in rec["cli"] if c in procs]
+            if hit:
+                for c in rec["cli"]:
+                    procs.setdefault(c, hit[0])
+        return procs
 
     @staticmethod
     def _apply_app_state(snap, recs):

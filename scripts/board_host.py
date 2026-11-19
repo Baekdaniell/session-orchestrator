@@ -54,6 +54,11 @@ if os.name == "nt":
 
 def _cmdlines(exe_name="claude.exe"):
     """이름이 exe_name 인 프로세스들의 명령줄(같은 사용자 것만 읽힌다). PowerShell 을 띄우지 않고 ctypes 로."""
+    return [c for c, _ in _procs(exe_name)]
+
+
+def _procs(exe_name="claude.exe"):
+    """이름이 exe_name 인 프로세스들의 (명령줄, 시작 시각 epoch). 시작 시각을 못 읽으면 0."""
     if os.name != "nt":
         return []
     k32, ntdll = ctypes.windll.kernel32, ctypes.windll.ntdll
@@ -83,7 +88,13 @@ def _cmdlines(exe_name="claude.exe"):
             if ntdll.NtQueryInformationProcess(h, 60, buf, need.value, ctypes.byref(need)) != 0:
                 continue
             us = _UNICODE_STRING.from_buffer(buf)
-            out.append(ctypes.wstring_at(us.Buffer, us.Length // 2))
+            cmd = ctypes.wstring_at(us.Buffer, us.Length // 2)
+            created = 0.0
+            ft = [W.FILETIME() for _ in range(4)]  # 시작 · 끝 · 커널 · 사용자 시간
+            if k32.GetProcessTimes(h, *[ctypes.byref(x) for x in ft]):
+                t100 = (ft[0].dwHighDateTime << 32) | ft[0].dwLowDateTime  # 1601-01-01 부터 100ns 단위
+                created = (t100 - 116444736000000000) / 1e7
+            out.append((cmd, created))
         except Exception:
             pass
         finally:
@@ -95,13 +106,34 @@ _CMDS = {"at": 0.0, "val": []}
 _CMDS_LOCK = threading.Lock()
 
 
-def _cmdlines_cached(ttl=3.0):
-    """프로세스 명령줄은 몇 초 묶어 쓴다(상세 창이 2.5초마다 묻고, 프로세스가 수십 개라 한 번에 0.1초쯤 걸림)."""
+def _procs_cached(ttl=3.0):
+    """프로세스 목록은 몇 초 묶어 쓴다(상세 창이 2.5초마다 묻고, 프로세스가 수십 개라 한 번에 0.1초쯤 걸림)."""
     with _CMDS_LOCK:
         if time.time() - _CMDS["at"] > ttl:
-            _CMDS["val"] = _cmdlines()
+            _CMDS["val"] = _procs()
             _CMDS["at"] = time.time()
         return _CMDS["val"]
+
+
+def _cmdlines_cached(ttl=3.0):
+    return [c for c, _ in _procs_cached(ttl)]
+
+
+_CLI_ID = re.compile(r"--(?:resume|session-id)[= ]\"?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+
+
+def cli_procs():
+    """대화 id → 그 대화를 잡고 있는 claude.exe(앱 · 상황판이 띄운 것)의 시작 시각 epoch. 같은 id 가 여럿이면 가장 이른 것.
+    Windows 밖이면 None(모름) — 실시간 층은 그때 시간 창으로만 백그라운드 작업을 판단한다(11-19)."""
+    if os.name != "nt":
+        return None
+    out = {}
+    for cmd, created in _procs_cached(5.0):
+        m = _CLI_ID.search(cmd)
+        if m:
+            cid = m.group(1)
+            out[cid] = min(out.get(cid) or created, created) if created else out.get(cid, 0.0)
+    return out
 
 
 def held_by_app(cli_id, fresh=False):
