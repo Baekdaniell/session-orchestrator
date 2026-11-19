@@ -281,6 +281,14 @@ body.linking [data-list] > [data-sid]:not(.rel) { opacity: .35; transition: opac
 .drawer .lgrid .k { color: var(--fg-3); }
 .composer.docked { position: static; transform: none; width: auto; box-shadow: none; border: 0; padding: 0; background: transparent; }
 .composer.docked .to .x { display: none; }
+/* 접기(11-19): 상세 창 아래에 붙은 보내기 창 · 상세 창의 대화 칸을 최소화해 가린다(이 브라우저에 기억). 떠 있는 보내기 창(관제 카드)은 ✕ 로 닫으므로 접기 없음 */
+.composer .to .mini { margin-left: auto; padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg-2); font: 600 12px var(--font); cursor: pointer; }
+.composer .to .mini:hover { background: var(--hover); color: var(--fg); }
+.composer:not(.docked) .to .mini { display: none; }
+.composer.docked.mini textarea, .composer.docked.mini .act { display: none; }
+.drawer .conv-tools .conv-mini { padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg-2); font: 600 1em var(--font); cursor: pointer; }
+.drawer .conv-tools .conv-mini:hover { background: var(--hover); color: var(--fg); }
+.drawer.conv-min #d-conv, .drawer.conv-min #d-to-end, .drawer.conv-min .conv-tools label { display: none !important; }
 @media (max-width: 720px) { .drawer .props2 { grid-template-columns: 90px 1fr; } }
 
 /* 정리 후보 보관: 카드별 「보관」 + 묶음 머리의 「전부 보관」. 관제 세션이 archive_session 으로 처리(되돌리기 가능) */
@@ -1058,7 +1066,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <div class="box" id="d-links"><span class="nosum">주고받은 요청이 없어요</span></div>
     <div class="acts" id="d-acts"></div>
     <!-- 대화는 맨 끝(11-19): 자체 스크롤 없이 상세 창 스크롤 하나로 읽는다. 맨 아래 = 최신 -->
-    <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label></span></h3>
+    <h3 class="conv-h">대화 <span class="conv-tools"><label><input type="checkbox" id="d-conv-res"> 도구 결과</label><label><input type="checkbox" id="d-conv-note"> 알림</label><button type="button" class="conv-mini" id="d-conv-mini" aria-expanded="true">접기 ▴</button></span></h3>
     <div class="conv" id="d-conv"><span class="nosum">불러오는 중…</span></div>
     <button type="button" class="to-end hidden" id="d-to-end">↓ 최신 대화</button>
   </div>
@@ -1104,7 +1112,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 <!-- 채팅 입력. 관제 카드는 떠 있는 창으로, 세션 카드는 드로어 아래에 붙어서 열린다. 관제 세션이 그 세션에 작업자 메시지로 전달한다. -->
 <div class="composer hidden" id="composer">
-  <div class="to">💬 <span>보낼 곳</span> <b id="c-title"></b><button class="x" id="c-x" type="button" aria-label="닫기">✕</button></div>
+  <div class="to">💬 <span>보낼 곳</span> <b id="c-title"></b><button class="mini" id="c-mini" type="button" aria-expanded="true">▾ 접기</button><button class="x" id="c-x" type="button" aria-label="닫기">✕</button></div>
   <textarea id="c-text" placeholder="이 세션에 보낼 말을 적고 Ctrl+Enter (관제 세션이 대신 전달해요)"></textarea>
   <div class="act"><span class="st" id="c-st"></span><button class="send" id="c-send" type="button">보내기</button></div>
 </div>
@@ -2416,6 +2424,22 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     });
     return b;
   };
+  // 접기(11-19): 대화 칸 · 상세 창에 붙은 보내기 창을 최소화해 가린다. 이 브라우저에 기억(다른 카드를 열어도 그대로)
+  const miniGet = (k) => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
+  const miniSet = (k, v) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch {} };
+  const applyMini = () => {
+    const cm = miniGet('so.convMini'), km = miniGet('so.chatMini');
+    drawer.classList.toggle('conv-min', cm);
+    const b1 = $('#d-conv-mini');
+    b1.textContent = cm ? '펼치기 ▾' : '접기 ▴'; b1.setAttribute('aria-expanded', String(!cm)); b1.title = cm ? '대화 다시 보이기' : '대화를 접어서 가리기';
+    composer.classList.toggle('mini', km);
+    const b2 = $('#c-mini');
+    b2.textContent = km ? '▴ 펼치기' : '▾ 접기'; b2.setAttribute('aria-expanded', String(!km)); b2.title = km ? '보내기 창 펼치기' : '보내기 창을 접어서 가리기';
+    toEndPill();
+  };
+  $('#d-conv-mini').addEventListener('click', () => { miniSet('so.convMini', !miniGet('so.convMini')); applyMini(); });
+  $('#c-mini').addEventListener('click', () => { const v = !miniGet('so.chatMini'); miniSet('so.chatMini', v); applyMini(); if (!v) $('#c-text').focus(); });
+  applyMini();
   convScroller().addEventListener('scroll', toEndPill, { passive: true });
   $('#d-to-end').addEventListener('click', () => { const sc = convScroller(); sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); });
   $('#d-conv-res').addEventListener('change', (e) => convBox().classList.toggle('show-res', e.target.checked));
