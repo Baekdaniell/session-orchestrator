@@ -5,7 +5,8 @@
 
 사용 (리포 루트에서):
   python -I scripts/board-queue.py wait            inbox 에 요청이 생길 때까지 블록(1초 폴링). 생기면 id 를 한 줄씩 찍고 종료.
-                                                   기다리는 동안 board/.watcher-armed 를 만들어 두고 종료 때 지운다(페이지의 "연결됨" 배지).
+                                                   기다리는 동안 board/.watcher-armed 에 자기 pid 를 적어 두고 종료 때 지운다(페이지의 "연결됨" 배지).
+                                                   강제 종료로 파일이 남아도 서버는 pid 가 살아 있을 때만 연결됨으로 본다(board_host.watcher_alive).
                                                    → 관제 세션은 이 명령을 Bash run_in_background 로 띄워 두고, 끝나면 깨어나 take 한다.
   python -I scripts/board-queue.py take            inbox/*.json 전부를 working/ 으로 옮기고 내용을 JSON 배열로 출력.
   python -I scripts/board-queue.py done <id> [--error] [--result 텍스트]
@@ -32,7 +33,9 @@ def cmd_wait(_a) -> None:
     for d in ("inbox", "working", "done"):
         (ROOT / d).mkdir(parents=True, exist_ok=True)
     flag = ROOT / ".watcher-armed"
-    flag.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+    me = os.getpid()
+    # pid 를 같이 적는다: 이 프로세스가 강제로 끝나 아래 finally 가 못 돌아도, 서버가 pid 생존을 보고 「연결됨」을 끈다
+    flag.write_text(json.dumps({"pid": me, "at": time.time(), "since": time.strftime("%Y-%m-%d %H:%M:%S")}), encoding="utf-8")
     try:
         while True:
             found = _files("inbox")
@@ -42,7 +45,11 @@ def cmd_wait(_a) -> None:
                 return
             time.sleep(1)
     finally:
-        flag.unlink(missing_ok=True)
+        try:  # 그새 다른 대기가 덮어썼으면 그쪽 표시는 두고 내 것만 지운다
+            if json.loads(flag.read_text(encoding="utf-8")).get("pid") == me:
+                flag.unlink(missing_ok=True)
+        except (OSError, ValueError, AttributeError):
+            pass
 
 
 def cmd_take(_a) -> None:
@@ -75,7 +82,9 @@ def cmd_done(a) -> None:
 def cmd_list(_a) -> None:
     for d in ("inbox", "working", "done"):
         print(f"{d}: {len(_files(d))}")
-    print("armed:", (ROOT / ".watcher-armed").exists())
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import board_host  # 여기서만 쓴다(wait · take · done 은 가볍게 둔다)
+    print("armed:", board_host.watcher_alive(ROOT / ".watcher-armed"))
 
 
 def main() -> None:

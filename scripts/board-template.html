@@ -1949,7 +1949,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   const checkLink = async () => {
     try {
       const h = await api('/api/health');
-      setLink(h.armed, h.armed ? '관제 세션 연결됨' : '관제 세션이 대기 중이 아님 — 관제 세션에서 /board 한 번');
+      setLink(h.armed, h.armed ? '관제 세션 연결됨'
+        : '관제 세션이 대기 중이 아님' + (h.queued ? ` · 요청 ${h.queued}건 쌓임` : '') + ' — 관제 세션에서 /board 한 번');
     } catch { setLink(false, '로컬 서버 꺼짐 — 관제 세션에서 /board 한 번'); }
   };
   const waitDone = async (id, onTick) => {

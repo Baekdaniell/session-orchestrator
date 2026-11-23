@@ -13,7 +13,7 @@
   다른 로컬 페이지가 멋대로 세션에 글을 넣지 못하게 하는 최소 장치다. 토큰은 리포에 올라가지 않는다(board/ 는 gitignore).
 
 API
-  GET  /api/health              → {ok, armed(관제 세션 대기 중인지), queued(inbox 개수)}
+  GET  /api/health              → {ok, armed(관제 세션 대기가 살아 있는지 — 표시 파일의 pid 로 확인), queued(inbox 개수)}
   GET  /api/status?id=…         → {state: queued|working|done|error|unknown, result?}
   POST /api/message             → {id, state:'queued'}            (본문 {session_id, session, text})
   POST /api/archive             → {id, state:'queued'}            (본문 {session_ids:[…], sessions:[제목…]})  정리 후보 보관
@@ -431,7 +431,7 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/health":
             return self._json(200, {
                 "ok": True,
-                "armed": (self.root / ".watcher-armed").exists(),
+                "armed": board_host.watcher_alive(self.root / ".watcher-armed"),  # 파일만 있고 대기가 죽었으면 False
                 "queued": len(list((self.root / "inbox").glob("*.json"))),
             })
         if u.path == "/api/status":

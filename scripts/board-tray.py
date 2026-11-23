@@ -75,6 +75,7 @@ LOG = ROOT / "tray.log"
 POLL_MS = 3000
 TURN_MIN_WORK = 20        # 이만큼(초) 넘게 돌던 세션이 턴을 끝내면 알림
 UNREAD_ALERT = 30 * 60    # 세션 간 요청이 미처리로 이만큼 지나면 알림
+RELAY_ALERT = 5 * 60      # 관제 대기가 끊긴 채 상황판 요청이 이만큼 쌓여 있으면 알림
 TOAST_GAP = 6             # 알림 사이 최소 간격(초). 그새 3개 넘게 쌓이면 하나로 묶는다
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
@@ -648,6 +649,9 @@ class Tray:
         self.release_url = f"https://github.com/{REPO}/releases/latest"
         self.status = "시작 중"
         self.armed = False
+        self.queued = 0             # 관제가 아직 안 꺼낸 상황판 요청 수(/api/health)
+        self.relay_since = None     # 관제 대기 없이 요청이 쌓이기 시작한 때
+        self.relay_told = False
         self.size = GetSystemMetrics(49) or 16  # SM_CXSMICON
         self.live_titles = {}
         self.count = self.running = 0
@@ -744,6 +748,7 @@ class Tray:
         try:
             h = self.get("/api/health", timeout=1.5)
             self.armed = bool(h.get("armed"))
+            self.queued = int(h.get("queued") or 0)
             return True
         except Exception:
             if self.httpd is None and self.start_server():
@@ -935,11 +940,27 @@ class Tray:
             tip = f"{TITLE}\n서버에 연결 못 함 — {self.status}"
         else:
             tip = (f"{TITLE}\n내 답 대기 {len(eff)}(질문 {len(asking & eff)}) · 도는 세션 {len(running)} · 오늘 출력 {out / 1000:.0f}k"
-                   + ("" if self.armed else "\n관제 세션 대기 아님(채팅 릴레이 멈춤)"))
+                   + ("" if self.armed else "\n관제 세션 대기 아님(채팅 릴레이 멈춤)" + (f" · 쌓인 요청 {self.queued}" if self.queued else "")))
         self.set_icon(len(eff), len(running), ok, tip)
+        if ok:
+            self.relay_alert()
         if snap and snap.get("ready"):
             self.notify(live, (snap or {}).get("edges") or [], waiting)
         self.pump_toasts()
+
+    def relay_alert(self):
+        """관제 대기가 끊긴 채 상황판 요청이 쌓여 있으면 한 번 알린다. 대기가 강제로 끝나면 요청이 안 보이게 쌓이기 때문
+        (끊긴 동안 「연결됨」이 거짓으로 켜져 있던 문제는 서버가 pid 로 고쳤고, 이건 끊긴 것을 사람에게 알리는 쪽)."""
+        if self.armed or not self.queued:
+            self.relay_since, self.relay_told = None, False
+            return
+        now = time.time()
+        if self.relay_since is None:
+            self.relay_since = now
+        elif not self.relay_told and now - self.relay_since >= RELAY_ALERT:
+            self.relay_told = True
+            self.queue(f"📭 상황판 요청 {self.queued}건이 처리되지 않고 있어요",
+                       "관제 세션 대기가 끊겼어요. 관제 세션에서 /board 를 한 번 돌리면 이어서 처리해요")
 
     def notify(self, live, edges, waiting):
         now = time.time()

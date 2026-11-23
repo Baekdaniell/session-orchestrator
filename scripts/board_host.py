@@ -119,7 +119,76 @@ def _cmdlines_cached(ttl=3.0):
     return [c for c, _ in _procs_cached(ttl)]
 
 
-_CLI_ID = re.compile(r"--(?:resume|session-id)[= ]\"?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+_K32 = None  # 마지막 오류 번호를 믿고 읽을 수 있는 kernel32(use_last_error). 다른 곳의 windll.kernel32 인자 설정과 섞이지 않게 따로 둔다
+
+
+def proc_started(pid):
+    """pid 프로세스가 살아 있으면 시작 시각 epoch(못 읽으면 0.0), 끝났거나 없으면 None.
+    끝난 프로세스도 누가 핸들을 쥐고 있으면 OpenProcess 가 열리므로 종료 코드(STILL_ACTIVE=259)까지 본다."""
+    global _K32
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except PermissionError:  # 있긴 한데 남의 것
+            return 0.0
+        except OSError:
+            return None
+        return 0.0
+    if _K32 is None:
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = W.HANDLE
+        k.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
+        k.GetExitCodeProcess.argtypes = [W.HANDLE, ctypes.POINTER(W.DWORD)]
+        k.GetProcessTimes.argtypes = [W.HANDLE] + [ctypes.POINTER(W.FILETIME)] * 4
+        k.CloseHandle.argtypes = [W.HANDLE]
+        _K32 = k
+    h = _K32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return 0.0 if ctypes.get_last_error() == 5 else None  # 5 = 접근 거부(있긴 함), 87 = 그런 프로세스 없음
+    try:
+        code = W.DWORD()
+        if not _K32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != 259:
+            return None
+        ft = [W.FILETIME() for _ in range(4)]  # 시작 · 끝 · 커널 · 사용자 시간
+        if _K32.GetProcessTimes(h, *[ctypes.byref(x) for x in ft]):
+            t100 = (ft[0].dwHighDateTime << 32) | ft[0].dwLowDateTime  # 1601-01-01 부터 100ns 단위
+            return (t100 - 116444736000000000) / 1e7
+        return 0.0
+    finally:
+        _K32.CloseHandle(h)
+
+
+def watcher_alive(flag) -> bool:
+    """관제 대기(board-queue wait)가 지금 살아 있나 — 상황판 「관제 세션 연결됨」 · 트레이 「관제 세션 대기」의 근거.
+    대기는 flag(board/.watcher-armed)에 자기 pid 와 쓴 시각을 적고, 끝날 때 지운다. 강제 종료되면 지우지 못해 파일만 남고
+    연결됨이 계속 켜져 있었다(요청이 처리되지 않은 채 쌓여도 안 보임). 그래서 pid 가 살아 있고, 그 프로세스가 파일을 쓴 뒤에
+    새로 뜬 것(pid 재사용)이 아닐 때만 연결됨으로 본다. pid 가 없는 옛 형식(시각 글자만, v1.4.11 까지)은 예전처럼 있으면 연결됨."""
+    try:
+        raw = Path(flag).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True  # 막 쓰는 중이라 못 읽음 — 있긴 하다
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return True  # 옛 형식(또는 쓰는 중인 빈 파일)
+    if not isinstance(d, dict) or "pid" not in d:
+        return True
+    started = proc_started(d.get("pid"))
+    if started is None:
+        return False
+    at = d.get("at") or 0
+    return not (started and at and started > at + 5)
+
+
+_CLI_ID =re.compile(r"--(?:resume|session-id)[= ]\"?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
 
 
 def cli_procs():

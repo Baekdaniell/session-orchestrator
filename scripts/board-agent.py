@@ -58,6 +58,7 @@ ALT_PORTS = (18799, 28799, 38799, 17799, 27799, 37799)  # board-tray.py 와 같�
 POLL = 3.0                # 서버 확인 · 알림 판정 주기(초)
 TURN_MIN_WORK = 20        # 이만큼(초) 넘게 돌던 세션이 턴을 끝내면 알림
 UNREAD_ALERT = 30 * 60    # 세션 간 요청이 미처리로 이만큼 지나면 알림
+RELAY_ALERT = 5 * 60      # 관제 대기가 끊긴 채 상황판 요청이 이만큼 쌓여 있으면 알림
 TOAST_GAP = 6             # 알림 사이 최소 간격(초). 그새 3개 넘게 쌓이면 하나로 묶는다
 IN_USE = {10048, errno.EADDRINUSE}  # 포트 사용 중(Windows WSAEADDRINUSE · POSIX)
 
@@ -201,10 +202,25 @@ class Notifier:
         self.toasts = deque()
         self.last_toast = 0.0
         self.first = True
+        self.relay_since = None
+        self.relay_told = False
 
     def queue(self, title, body):
         if self.enabled():
             self.toasts.append((title, body))
+
+    def relay(self, armed, queued):
+        """관제 대기가 끊긴 채 상황판 요청이 쌓여 있으면 한 번 알린다(board-tray.py relay_alert 와 같은 규칙)."""
+        if armed or not queued:
+            self.relay_since, self.relay_told = None, False
+            return
+        now = time.time()
+        if self.relay_since is None:
+            self.relay_since = now
+        elif not self.relay_told and now - self.relay_since >= RELAY_ALERT:
+            self.relay_told = True
+            self.queue(f"📭 상황판 요청 {queued}건이 처리되지 않고 있어요",
+                       "관제 세션 대기가 끊겼어요. 관제 세션에서 /board 를 한 번 돌리면 이어서 처리해요")
 
     def update(self, live, edges, waiting, name):
         now = time.time()
@@ -292,6 +308,7 @@ class Agent:
         self.own_server = False
         self.status = "시작 중"
         self.armed = False
+        self.queued = 0  # 관제가 아직 안 꺼낸 상황판 요청 수(/api/health)
         self.ok = False
         self.live_titles = {}
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 시스템 프록시 무시(127.0.0.1)
@@ -385,7 +402,9 @@ class Agent:
 
     def ensure_server(self) -> bool:
         try:
-            self.armed = bool(self.get("/api/health", timeout=1.5).get("armed"))
+            h = self.get("/api/health", timeout=1.5)
+            self.armed = bool(h.get("armed"))
+            self.queued = int(h.get("queued") or 0)
             return True
         except Exception:
             if self.httpd is None and self.start_server():
@@ -420,6 +439,8 @@ class Agent:
         self.write_status(eff, running, asking, out)
         if snap and snap.get("ready"):
             self.notifier.update(live, snap.get("edges") or [], self.board.waiting(), self.name)
+        if self.ok:
+            self.notifier.relay(self.armed, self.queued)
         self.notifier.pump()
 
     def write_status(self, eff, running, asking, out):
